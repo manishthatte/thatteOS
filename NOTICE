@@ -1,0 +1,16 @@
+THATTEOS Microkernel
+Copyright 2026 Manish Jagdish Thatte
+
+This product includes software developed by
+Manish Jagdish Thatte (manish@manitlab.org)
+at maniTLab, Nashik, Maharashtra, India.
+https://www.manitlab.org
+
+THATTEOS is a balanced ternary microkernel operating system
+written in ManiT, targeting photonic-ternary hardware
+(The THATTE Device). It provides trit-addressed virtual memory,
+consensus scheduling, TritFS filesystem, and trit-stream IPC.
+
+Patent applications covering the underlying hardware have been
+filed with the Indian Patent Office (Application Nos.
+202621045270–202621045342, filed 9 April 2026).

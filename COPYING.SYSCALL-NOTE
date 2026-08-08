@@ -1,0 +1,20 @@
+THATTEOS SYSTEM CALL BOUNDARY NOTE
+
+Copyright © 2026 Manish Jagdish Thatte
+
+NOTE: The AGPLv3 license of the THATTEOS kernel does *not* cover user
+programs that use kernel services through normal system calls, message-
+passing IPC, or the THATTEOS ABI — this is considered normal use of the
+kernel, and does NOT make such programs "derivative works" or "works based
+on" the kernel.
+
+User-space programs written to run on THATTEOS (or on the T3ISA emulator
+hosting THATTEOS) may therefore be distributed under any license of your
+choice.
+
+This note applies only to the system-call/ABI boundary. Code that is
+statically linked INTO the kernel, kernel modules, or modified versions of
+the kernel itself remain governed by the AGPLv3 in full.
+
+(This follows the same principle as the syscall note in the Linux kernel's
+COPYING file.)
