@@ -19,6 +19,10 @@ What's here, all in ManiT source:
   editor, web browser, SDL2 GUI apps, IPC/capability demos — all in ManiT
 - **Tests** (`tests/`): kernel + userspace regression suite
 
+**New here? Read [GETTING_STARTED.md](GETTING_STARTED.md)**, then
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the handbook of every kernel
+subsystem.
+
 ## Quick start (hosted mode, Linux)
 
 ```sh
