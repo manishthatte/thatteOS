@@ -1,5 +1,8 @@
 # THATTEOS — a balanced ternary operating system
 
+[![CI](https://github.com/manishthatte/thatteos/actions/workflows/ci.yml/badge.svg)](https://github.com/manishthatte/thatteos/actions/workflows/ci.yml)
+[![License: AGPL v3](https://img.shields.io/badge/license-AGPL--3.0-blue.svg)](LICENSE)
+
 **THATTEOS** is a microkernel operating system written entirely in
 [ManiT](https://github.com/manishthatte/manitc), the balanced ternary systems
 language. It manages a photonic-ternary computing fabric the way a

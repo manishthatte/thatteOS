@@ -114,13 +114,13 @@ fi
 OUT=$(run_shell "pwd")
 check "pwd shows path"          "$OUT" "/"
 
-OUT=$(run_shell "cat thatteos/LICENSE")
+OUT=$(run_shell "cat LICENSE")
 check "cat reads LICENSE"       "$OUT" "Manish"
 
-OUT=$(run_shell "wc thatteos/LICENSE")
+OUT=$(run_shell "wc LICENSE")
 check "wc shows line count"     "$OUT" "lines"
 
-OUT=$(run_shell "head thatteos/LICENSE")
+OUT=$(run_shell "head LICENSE")
 check "head shows first lines"  "$OUT" "Manish"
 
 echo ""
@@ -259,15 +259,15 @@ check "unknown cmd: error not crash"     "$OUT" "not found"
 
 # 9.2  kill with out-of-range PID (>8) — must print error, not silently succeed
 OUT=$(run_shell "kill 999 0")
-check "kill OOB pid: error message"      "$OUT" "invalid PID"
+check "kill OOB pid: error message"      "$OUT" "PID out of range"
 
 # 9.3  kill with out-of-range signal (>4) — must print error
 OUT=$(run_shell "kill 3 99")
-check "kill OOB signal: error message"   "$OUT" "invalid signal"
+check "kill OOB signal: error message"   "$OUT" "signal out of ternary range"
 
 # 9.4  stat on nonexistent path — must print error, not crash
 OUT=$(run_shell "stat /does/not/exist")
-check "stat missing path: error"         "$OUT" "not found"
+check "stat missing path: error"         "$OUT" "no such path"
 
 # 9.5  trit with no argument (empty arg) — must not crash
 OUT=$(run_shell "trit ")

@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+  # THATTEOS is written in ManiT, so a compiler change can break it without
+  # anything in this repository changing. Rebuild weekly against manitc main.
+  schedule:
+    - cron: '17 4 * * 1'
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: build + test
+    runs-on: ubuntu-latest
+    env:
+      # build.sh defaults to clang-19; runners carry an unversioned clang.
+      CLANG: clang
+    steps:
+      # The two repositories are checked out as siblings, which is the layout
+      # build.sh expects (MANITC defaults to ../manitc/target/release/manitc).
+      - uses: actions/checkout@v4
+        with:
+          path: thatteos
+
+      - uses: actions/checkout@v4
+        with:
+          repository: manishthatte/manitc
+          path: manitc
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev libsdl2-dev libsdl2-ttf-dev
+
+      - name: Build the ManiT compiler
+        working-directory: manitc
+        run: cargo build --release --locked
+
+      - name: Build the kernel shell
+        working-directory: thatteos
+        run: bash build.sh
+
+      - name: Build userspace programs
+        working-directory: thatteos
+        run: bash userspace/build.sh
+
+      - name: Regression tests
+        working-directory: thatteos
+        run: bash tests/test_all.sh

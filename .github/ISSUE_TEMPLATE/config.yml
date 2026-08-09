@@ -1,0 +1,11 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions and design discussion
+    url: https://github.com/manishthatte/thatteos/discussions
+    about: Ask how something works, or float a design idea before filing an issue.
+  - name: Compiler issues
+    url: https://github.com/manishthatte/manitc/issues
+    about: THATTEOS is written in ManiT — report compiler bugs against manitc.
+  - name: Getting started
+    url: https://github.com/manishthatte/thatteos/blob/main/GETTING_STARTED.md
+    about: Build the compiler, build the kernel, boot the shell.

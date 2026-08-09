@@ -1,0 +1,45 @@
+name: Bug report
+description: Something THATTEOS gets wrong
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you expected, and what you got instead.
+    validations:
+      required: true
+
+  - type: textarea
+    id: repro
+    attributes:
+      label: Reproducer
+      description: The shell commands or userspace program that shows the problem.
+      render: shell
+    validations:
+      required: true
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Kernel (scheduler, interrupts, privilege)
+        - Memory management
+        - Syscalls / IPC
+        - Filesystem (TritFS)
+        - Shell
+        - Userspace program
+        - Build
+        - Not sure
+    validations:
+      required: true
+
+  - type: textarea
+    id: version
+    attributes:
+      label: Build details
+      description: THATTEOS commit, the manitc commit you built it with, and your OS.
+      render: shell
+    validations:
+      required: true
