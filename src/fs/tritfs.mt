@@ -124,9 +124,9 @@ struct FdTable {
 
 fn fd_table_init(pid: int) -> FdTable {
     // Pre-open stdin(0), stdout(1), stderr(2) pointing to /dev/tty
-    let stdin  = make_fd(0, 100, +);   // ino 100 = /dev/tty, read
-    let stdout = make_fd(1, 100, -);   // ino 100 = /dev/tty, write
-    let stderr = make_fd(2, 100, -);   // ino 100 = /dev/tty, write
+    let stdin  = make_fd(0, 2, +);   // ino 2 = /dev/tty, read
+    let stdout = make_fd(1, 2, -);   // ino 2 = /dev/tty, write
+    let stderr = make_fd(2, 2, -);   // ino 2 = /dev/tty, write
     io::print("[TRITFS] fd_table_init: PID=");
     io::print_int(pid);
     io::println(" — stdin/stdout/stderr -> /dev/tty");
@@ -186,6 +186,46 @@ fn tritfs_init() -> TritFS {
 }
 
 // ---------------------------------------------------------------------------
+// fd_table_get / fd_table_set / fd_find_free_slot: slot helpers
+// ---------------------------------------------------------------------------
+
+fn fd_table_get(fd_table: FdTable, slot: int) -> FileDesc {
+    if slot == 0 { return fd_table.fd0; }
+    elif slot == 1 { return fd_table.fd1; }
+    elif slot == 2 { return fd_table.fd2; }
+    elif slot == 3 { return fd_table.fd3; }
+    elif slot == 4 { return fd_table.fd4; }
+    elif slot == 5 { return fd_table.fd5; }
+    elif slot == 6 { return fd_table.fd6; }
+    elif slot == 7 { return fd_table.fd7; }
+    else { return fd_table.fd8; }
+}
+
+fn fd_table_set(fd_table: FdTable, new_fd: FileDesc, slot: int, new_count: int) -> FdTable {
+    return FdTable { pid: fd_table.pid, count: new_count,
+        fd0: if slot == 0 { new_fd } else { fd_table.fd0 },
+        fd1: if slot == 1 { new_fd } else { fd_table.fd1 },
+        fd2: if slot == 2 { new_fd } else { fd_table.fd2 },
+        fd3: if slot == 3 { new_fd } else { fd_table.fd3 },
+        fd4: if slot == 4 { new_fd } else { fd_table.fd4 },
+        fd5: if slot == 5 { new_fd } else { fd_table.fd5 },
+        fd6: if slot == 6 { new_fd } else { fd_table.fd6 },
+        fd7: if slot == 7 { new_fd } else { fd_table.fd7 },
+        fd8: if slot == 8 { new_fd } else { fd_table.fd8 } };
+}
+
+fn fd_find_free_slot(fd_table: FdTable) -> int {
+    let mut slot = 0;
+    while slot < 9 {
+        if !fd_table_get(fd_table, slot).open {
+            return slot;
+        }
+        slot = slot + 1;
+    }
+    return -1;
+}
+
+// ---------------------------------------------------------------------------
 // sys_open: open file by inode
 // ---------------------------------------------------------------------------
 
@@ -197,66 +237,50 @@ fn sys_open(fd_table: FdTable, ino: int, mode: trit, inode_name: str) -> FdTable
     io::print(" mode=");
     io::println(mode_name(mode));
 
-    if fd_table.count >= 9 {
+    // Place in first available slot
+    let slot = fd_find_free_slot(fd_table);
+    if slot < 0 {
         io::println("  ERROR: FD table full (9 max)");
         return fd_table;
     }
 
-    let new_fd = make_fd(fd_table.count, ino, mode);
-    let new_count = fd_table.count + 1;
+    let new_fd = make_fd(slot, ino, mode);
 
     io::print("  allocated fd=");
-    io::println_int(fd_table.count);
+    io::println_int(slot);
 
-    // Place in first available slot
-    if fd_table.count == 3 {
-        return FdTable { pid: fd_table.pid, count: new_count,
-            fd0: fd_table.fd0, fd1: fd_table.fd1, fd2: fd_table.fd2,
-            fd3: new_fd, fd4: fd_table.fd4, fd5: fd_table.fd5,
-            fd6: fd_table.fd6, fd7: fd_table.fd7, fd8: fd_table.fd8 };
-    } elif fd_table.count == 4 {
-        return FdTable { pid: fd_table.pid, count: new_count,
-            fd0: fd_table.fd0, fd1: fd_table.fd1, fd2: fd_table.fd2,
-            fd3: fd_table.fd3, fd4: new_fd, fd5: fd_table.fd5,
-            fd6: fd_table.fd6, fd7: fd_table.fd7, fd8: fd_table.fd8 };
-    } elif fd_table.count == 5 {
-        return FdTable { pid: fd_table.pid, count: new_count,
-            fd0: fd_table.fd0, fd1: fd_table.fd1, fd2: fd_table.fd2,
-            fd3: fd_table.fd3, fd4: fd_table.fd4, fd5: new_fd,
-            fd6: fd_table.fd6, fd7: fd_table.fd7, fd8: fd_table.fd8 };
-    } elif fd_table.count == 6 {
-        return FdTable { pid: fd_table.pid, count: new_count,
-            fd0: fd_table.fd0, fd1: fd_table.fd1, fd2: fd_table.fd2,
-            fd3: fd_table.fd3, fd4: fd_table.fd4, fd5: fd_table.fd5,
-            fd6: new_fd, fd7: fd_table.fd7, fd8: fd_table.fd8 };
-    } elif fd_table.count == 7 {
-        return FdTable { pid: fd_table.pid, count: new_count,
-            fd0: fd_table.fd0, fd1: fd_table.fd1, fd2: fd_table.fd2,
-            fd3: fd_table.fd3, fd4: fd_table.fd4, fd5: fd_table.fd5,
-            fd6: fd_table.fd6, fd7: new_fd, fd8: fd_table.fd8 };
-    } else {
-        return FdTable { pid: fd_table.pid, count: new_count,
-            fd0: fd_table.fd0, fd1: fd_table.fd1, fd2: fd_table.fd2,
-            fd3: fd_table.fd3, fd4: fd_table.fd4, fd5: fd_table.fd5,
-            fd6: fd_table.fd6, fd7: fd_table.fd7, fd8: new_fd };
-    }
+    return fd_table_set(fd_table, new_fd, slot, fd_table.count + 1);
 }
 
 // ---------------------------------------------------------------------------
 // sys_close: close file descriptor
+// Returns the exit code AND the updated table (slot freed, count reduced).
 // ---------------------------------------------------------------------------
 
-fn sys_close(fd_num: int, fd_table: FdTable) -> int {
+struct CloseResult {
+    pub code: int,
+    pub table: FdTable,
+}
+
+fn close_result(code: int, table: FdTable) -> CloseResult {
+    return CloseResult { code: code, table: table };
+}
+
+fn sys_close(fd_num: int, fd_table: FdTable) -> CloseResult {
     io::print("[SYS_CLOSE] fd=");
     io::println_int(fd_num);
 
     if fd_num < 0 || fd_num > 8 {
         io::println("  ERROR: invalid FD number");
-        return -1;
+        return close_result(-1, fd_table);
+    }
+    if !fd_table_get(fd_table, fd_num).open {
+        io::println("  ERROR: fd not open");
+        return close_result(-1, fd_table);
     }
 
     io::println("  fd closed, resources released");
-    return 0;
+    return close_result(0, fd_table_set(fd_table, empty_fd(), fd_num, fd_table.count - 1));
 }
 
 // ---------------------------------------------------------------------------
@@ -493,7 +517,8 @@ fn main() {
 
     // --- Close file ---
     io::println("--- Close fd=3 ---");
-    let c = sys_close(3, fd_table);
+    let cr = sys_close(3, fd_table);
+    fd_table = cr.table;
     io::println("");
 
     // --- Permission checks ---

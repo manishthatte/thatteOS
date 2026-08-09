@@ -106,7 +106,7 @@ fn schedule_grant(s: PhotonSchedule, zone: t9, wavelength: t9,
     };
 }
 
-fn schedule_check(s: PhotonSchedule, zone: t9, pid: t9, cycle: word) -> T3Bool {
+fn schedule_check(s: PhotonSchedule, zone: t9, pid: t9, cycle: word) -> bool3 {
     let mut i = 0;
     while i < 9 {
         let e = get_entry(s, i);
@@ -154,11 +154,11 @@ fn schedule_delegate(s: PhotonSchedule, from_pid: t9, to_pid: t9,
     return result;
 }
 
-fn is_authorized(v: T3Bool) -> bool {
+fn is_authorized(v: bool3) -> bool {
     tif v { + => return true, 0 => return false, - => return false }
 }
 
-fn is_denied(v: T3Bool) -> bool {
+fn is_denied(v: bool3) -> bool {
     tif v { + => return false, 0 => return false, - => return true }
 }
 

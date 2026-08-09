@@ -60,7 +60,7 @@ fn trit_eq(a: trit, b: trit) -> bool {
     }
 }
 
-fn permission_check(page_perm: trit, ring: trit) -> T3Bool {
+fn permission_check(page_perm: trit, ring: trit) -> bool3 {
     let gate_out = tmin2(ring, page_perm);
     // Access allowed iff tmin2(ring, page_perm) == page_perm
     tif gate_out {
@@ -88,7 +88,7 @@ fn permission_check(page_perm: trit, ring: trit) -> T3Bool {
     }
 }
 
-fn can_access(required: trit, current: trit) -> T3Bool {
+fn can_access(required: trit, current: trit) -> bool3 {
     let gate_out = tmin2(current, required);
     // current >= required iff tmin2(current, required) == required
     tif gate_out {
@@ -116,11 +116,11 @@ fn can_access(required: trit, current: trit) -> T3Bool {
     }
 }
 
-fn is_true(v: T3Bool) -> bool {
+fn is_true(v: bool3) -> bool {
     tif v { + => return true, 0 => return false, - => return false }
 }
 
-fn is_false(v: T3Bool) -> bool {
+fn is_false(v: bool3) -> bool {
     tif v { + => return false, 0 => return false, - => return true }
 }
 

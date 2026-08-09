@@ -76,27 +76,23 @@ struct WriteResult {
     pub pipe: Pipe,
 }
 
+fn write_failed(p: Pipe) -> WriteResult {
+    return WriteResult { ok: false, pipe: p };
+}
+
 // Helper: set slot[idx % 9] = msg, return updated pipe.
 fn pipe_set_slot(p: Pipe, idx: int, msg: str) -> Pipe {
     let slot = idx - (idx / 9) * 9;  // idx % 9
-    if slot == 0 { return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: msg, s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4, s5: p.s5, s6: p.s6, s7: p.s7, s8: p.s8 }; }
-    if slot == 1 { return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: p.s0, s1: msg, s2: p.s2, s3: p.s3, s4: p.s4, s5: p.s5, s6: p.s6, s7: p.s7, s8: p.s8 }; }
-    if slot == 2 { return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: p.s0, s1: p.s1, s2: msg, s3: p.s3, s4: p.s4, s5: p.s5, s6: p.s6, s7: p.s7, s8: p.s8 }; }
-    if slot == 3 { return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: p.s0, s1: p.s1, s2: p.s2, s3: msg, s4: p.s4, s5: p.s5, s6: p.s6, s7: p.s7, s8: p.s8 }; }
-    if slot == 4 { return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: p.s0, s1: p.s1, s2: p.s2, s3: p.s3, s4: msg, s5: p.s5, s6: p.s6, s7: p.s7, s8: p.s8 }; }
-    if slot == 5 { return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: p.s0, s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4, s5: msg, s6: p.s6, s7: p.s7, s8: p.s8 }; }
-    if slot == 6 { return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: p.s0, s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4, s5: p.s5, s6: msg, s7: p.s7, s8: p.s8 }; }
-    if slot == 7 { return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: p.s0, s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4, s5: p.s5, s6: p.s6, s7: msg, s8: p.s8 }; }
     return Pipe { id: p.id, state: p.state, head: p.head, tail: p.tail, count: p.count,
-        s0: p.s0, s1: p.s1, s2: p.s2, s3: p.s3, s4: p.s4, s5: p.s5, s6: p.s6, s7: p.s7, s8: msg };
+        s0: if slot == 0 { msg } else { p.s0 },
+        s1: if slot == 1 { msg } else { p.s1 },
+        s2: if slot == 2 { msg } else { p.s2 },
+        s3: if slot == 3 { msg } else { p.s3 },
+        s4: if slot == 4 { msg } else { p.s4 },
+        s5: if slot == 5 { msg } else { p.s5 },
+        s6: if slot == 6 { msg } else { p.s6 },
+        s7: if slot == 7 { msg } else { p.s7 },
+        s8: if slot == 8 { msg } else { p.s8 } };
 }
 
 // Helper: get slot[idx % 9].
@@ -120,11 +116,15 @@ fn pipe_get_slot(p: Pipe, idx: int) -> str {
 fn pipe_write(p: Pipe, msg: str) -> WriteResult {
     if p.state == PIPE_CLOSED() {
         io::println("[PIPE] write: pipe is CLOSED — EPIPE");
-        return WriteResult { ok: false, pipe: p };
+        return write_failed(p);
+    }
+    if p.state == PIPE_HALF_CLOSED() {
+        io::println("[PIPE] write: write end closed — EPIPE");
+        return write_failed(p);
     }
     if p.count >= PIPE_CAPACITY() {
         io::println("[PIPE] write: buffer full — EWOULDBLOCK");
-        return WriteResult { ok: false, pipe: p };
+        return write_failed(p);
     }
     let new_tail = p.tail + 1;
     let next_tail = new_tail - (new_tail / 9) * 9;  // new_tail % 9
@@ -147,6 +147,10 @@ struct ReadResult {
     pub pipe: Pipe,
 }
 
+fn read_failed(p: Pipe) -> ReadResult {
+    return ReadResult { ok: false, msg: "", pipe: p };
+}
+
 // ---------------------------------------------------------------------------
 // pipe_read: dequeue the oldest message
 // ---------------------------------------------------------------------------
@@ -158,7 +162,7 @@ fn pipe_read(p: Pipe) -> ReadResult {
         } else {
             io::println("[PIPE] read: buffer empty — EWOULDBLOCK");
         }
-        return ReadResult { ok: false, msg: "", pipe: p };
+        return read_failed(p);
     }
     let msg = pipe_get_slot(p, p.head);
     let new_head = p.head + 1;

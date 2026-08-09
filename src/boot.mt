@@ -67,10 +67,14 @@ fn make_iv(vec: int, pri: trit, name: str) -> IVEntry {
 fn interrupt_init() {
     io::println("[BOOT] interrupt_init: registering 27 interrupt vectors");
 
-    // Build representative interrupt table entries
-    let priorities: [trit] = [-, -, -, 0, 0, 0, 0, 0, 0,
-                                0, 0, 0, 0, 0, +, 0, 0, 0,
-                                0, 0, 0, 0, 0, 0, +, 0, 0];
+    // Interrupt priority table — must match kernel/interrupt.mt:
+    //   vector 0        timer                  -> MEDIUM
+    //   vectors 1-5     syscall + faults       -> HIGH
+    //   vectors 6-17    hw/sw IRQ, device, IPC -> MEDIUM
+    //   vectors 18-26   deferred work          -> LOW
+    let priorities: [trit] = [0, +, +, +, +, +, 0, 0, 0,
+                                0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                -, -, -, -, -, -, -, -, -];
     let mut v = 0;
     while v < 27 {
         let pri = priorities[v];

@@ -141,11 +141,24 @@ fn set_entry(s: PhotonSchedule, idx: int, e: PhotonCapEntry) -> PhotonSchedule {
 // the specified zone's SWCNTs at the specified wavelength during the
 // specified time window, routing output to the specified process.
 
+fn find_free_slot(s: PhotonSchedule) -> int {
+    // A slot is free when its grant is empty/revoked (duration_cycles == 0)
+    let mut i = 0;
+    while i < 9 {
+        let e = get_entry(s, i);
+        if e.duration_cycles == 0 {
+            return i;
+        }
+        i = i + 1;
+    }
+    return -1;
+}
+
 fn schedule_grant(s: PhotonSchedule, zone: t9, wavelength: t9,
                   pid: t9, start: word, duration: word) -> PhotonSchedule {
-    let idx: int = s.count;
+    let idx: int = find_free_slot(s);
 
-    if idx >= 9 {
+    if idx < 0 {
         io::println("[PHOTON_CAP] grant FAILED: schedule full (9 entries max)");
         return s;
     }
@@ -175,7 +188,7 @@ fn schedule_grant(s: PhotonSchedule, zone: t9, wavelength: t9,
         e0: s2.e0, e1: s2.e1, e2: s2.e2,
         e3: s2.e3, e4: s2.e4, e5: s2.e5,
         e6: s2.e6, e7: s2.e7, e8: s2.e8,
-        count: idx + 1,
+        count: s.count + 1,
     };
 }
 
@@ -197,9 +210,12 @@ fn schedule_revoke(s: PhotonSchedule, zone: t9, pid: t9) -> PhotonSchedule {
     let mut result = s;
     let mut i = 0;
     let mut found = false;
+    let mut revoked = 0;
     while i < 9 {
         let e = get_entry(result, i);
-        if e.zone_id == zone tand e.target_pid == pid {
+        // Only live grants can be revoked — skip empty/revoked slots so
+        // (zone 0, pid 0) never matches a cleared entry.
+        if e.duration_cycles > 0 tand e.zone_id == zone tand e.target_pid == pid {
             // Zero out this entry (revoke grant)
             result = set_entry(result, i, empty_entry());
             io::print("  entry [");
@@ -207,6 +223,7 @@ fn schedule_revoke(s: PhotonSchedule, zone: t9, pid: t9) -> PhotonSchedule {
             io::println("] revoked — photon delivery ceased");
             io::println("  zone SWCNTs now dark — no current possible");
             found = true;
+            revoked = revoked + 1;
         }
         i = i + 1;
     }
@@ -215,7 +232,13 @@ fn schedule_revoke(s: PhotonSchedule, zone: t9, pid: t9) -> PhotonSchedule {
         io::println("  no matching entry found — nothing to revoke");
     }
 
-    return result;
+    // Release the revoked slots from the active count
+    return PhotonSchedule {
+        e0: result.e0, e1: result.e1, e2: result.e2,
+        e3: result.e3, e4: result.e4, e5: result.e5,
+        e6: result.e6, e7: result.e7, e8: result.e8,
+        count: result.count - revoked,
+    };
 }
 
 // ---------------------------------------------------------------------------
@@ -226,7 +249,7 @@ fn schedule_revoke(s: PhotonSchedule, zone: t9, pid: t9) -> PhotonSchedule {
 // deliver photons. Returns +1 (authorized), 0 (no matching entry),
 // or -1 (explicitly revoked / expired).
 
-fn schedule_check(s: PhotonSchedule, zone: t9, pid: t9, cycle: word) -> T3Bool {
+fn schedule_check(s: PhotonSchedule, zone: t9, pid: t9, cycle: word) -> bool3 {
     io::print("[PHOTON_CAP] check: zone=");
     io::print_int(zone);
     io::print(" pid=");
@@ -234,10 +257,14 @@ fn schedule_check(s: PhotonSchedule, zone: t9, pid: t9, cycle: word) -> T3Bool {
     io::print(" cycle=");
     io::println_int(cycle);
 
+    // Scan ALL live entries: an expired duplicate grant must not shadow a
+    // later valid one, and empty/revoked slots (zone 0, pid 0) must never
+    // match a real check.
     let mut i = 0;
+    let mut saw_expired = false;
     while i < 9 {
         let e = get_entry(s, i);
-        if e.zone_id == zone tand e.target_pid == pid {
+        if e.duration_cycles > 0 tand e.zone_id == zone tand e.target_pid == pid {
             // Check time window
             if cycle >= e.start_cycle tand cycle < e.start_cycle + e.duration_cycles {
                 io::print("  entry [");
@@ -248,12 +275,16 @@ fn schedule_check(s: PhotonSchedule, zone: t9, pid: t9, cycle: word) -> T3Bool {
                 io::print("  entry [");
                 io::print_int(i);
                 io::println("] -> EXPIRED (outside time window)");
-                return -;
+                saw_expired = true;
             }
         }
         i = i + 1;
     }
 
+    if saw_expired {
+        io::println("  only expired entries -> DENIED (outside time window)");
+        return -;
+    }
     io::println("  no matching entry -> DENIED (no photon grant)");
     return -;
 }
@@ -281,7 +312,7 @@ fn schedule_delegate(s: PhotonSchedule, from_pid: t9, to_pid: t9,
     let mut found = false;
     while i < 9 {
         let e = get_entry(result, i);
-        if e.zone_id == zone tand e.target_pid == from_pid {
+        if e.duration_cycles > 0 tand e.zone_id == zone tand e.target_pid == from_pid {
             // Transfer: replace target_pid
             let delegated = PhotonCapEntry {
                 zone_id: e.zone_id,

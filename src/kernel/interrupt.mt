@@ -58,6 +58,12 @@ struct InterruptState {
     pub enabled: bool,
     pub nesting_depth: int,
     pub current_priority: trit,   // priority of currently handling interrupt
+    // Priority stack: priority of the handler interrupted at each depth
+    // (sp0 = priority active before depth-0 dispatch, etc.). Depth is
+    // bounded at 3: '-' base -> MEDIUM -> HIGH, so 3 slots suffice.
+    pub sp0: trit,
+    pub sp1: trit,
+    pub sp2: trit,
     pub deferred_count: int,      // number of deferred (LOW) interrupts pending
     pub total_dispatched: int,
     pub total_deferred: int,
@@ -68,10 +74,24 @@ fn irq_state_init() -> InterruptState {
         enabled: true,
         nesting_depth: 0,
         current_priority: -,
+        sp0: -,
+        sp1: -,
+        sp2: -,
         deferred_count: 0,
         total_dispatched: 0,
         total_deferred: 0,
     };
+}
+
+// ---------------------------------------------------------------------------
+// Priority stack helpers: push the interrupted priority when a handler is
+// dispatched at `depth`; peek it back when returning to `depth`.
+// ---------------------------------------------------------------------------
+
+fn pri_stack_slot(state: InterruptState, depth: int) -> trit {
+    if depth == 0 { return state.sp0; }
+    elif depth == 1 { return state.sp1; }
+    else { return state.sp2; }
 }
 
 // ---------------------------------------------------------------------------
@@ -194,6 +214,7 @@ fn interrupt_dispatch(vector: int, state: InterruptState) -> InterruptState {
                 enabled: state.enabled,
                 nesting_depth: state.nesting_depth,
                 current_priority: state.current_priority,
+                sp0: state.sp0, sp1: state.sp1, sp2: state.sp2,
                 deferred_count: state.deferred_count + 1,
                 total_dispatched: state.total_dispatched,
                 total_deferred: state.total_deferred + 1,
@@ -201,6 +222,12 @@ fn interrupt_dispatch(vector: int, state: InterruptState) -> InterruptState {
         }
         io::println("  NESTING: preempting current handler");
     }
+
+    // Push the interrupted priority onto the stack slot for this depth
+    let d = state.nesting_depth;
+    let new_sp0 = if d == 0 { state.current_priority } else { state.sp0 };
+    let new_sp1 = if d == 1 { state.current_priority } else { state.sp1 };
+    let new_sp2 = if d == 2 { state.current_priority } else { state.sp2 };
 
     tif priority {
         + => {
@@ -217,6 +244,7 @@ fn interrupt_dispatch(vector: int, state: InterruptState) -> InterruptState {
                 enabled: state.enabled,
                 nesting_depth: state.nesting_depth + 1,
                 current_priority: +,
+                sp0: new_sp0, sp1: new_sp1, sp2: new_sp2,
                 deferred_count: state.deferred_count,
                 total_dispatched: state.total_dispatched + 1,
                 total_deferred: state.total_deferred,
@@ -232,6 +260,7 @@ fn interrupt_dispatch(vector: int, state: InterruptState) -> InterruptState {
                 enabled: state.enabled,
                 nesting_depth: state.nesting_depth + 1,
                 current_priority: 0,
+                sp0: new_sp0, sp1: new_sp1, sp2: new_sp2,
                 deferred_count: state.deferred_count,
                 total_dispatched: state.total_dispatched + 1,
                 total_deferred: state.total_deferred,
@@ -245,6 +274,7 @@ fn interrupt_dispatch(vector: int, state: InterruptState) -> InterruptState {
                 enabled: state.enabled,
                 nesting_depth: state.nesting_depth,
                 current_priority: state.current_priority,
+                sp0: state.sp0, sp1: state.sp1, sp2: state.sp2,
                 deferred_count: state.deferred_count + 1,
                 total_dispatched: state.total_dispatched,
                 total_deferred: state.total_deferred + 1,
@@ -266,19 +296,38 @@ fn interrupt_return(state: InterruptState) -> InterruptState {
     io::print(" -> ");
     io::println_int(new_depth);
 
-    // Process deferred interrupts if back to depth 0
+    // Restore the priority of the handler we return into (priority stack pop).
+    // At depth 0 this is '-' (no active handler).
+    let restored = pri_stack_slot(state, new_depth);
+    io::print("  restored priority: ");
+    io::println_trit(restored);
+
+    // Dispatch pending deferred interrupts once back at depth 0
+    let mut dispatched_now = 0;
     if new_depth == 0 && state.deferred_count > 0 {
         io::print("  processing ");
         io::print_int(state.deferred_count);
         io::println(" deferred interrupt(s)");
+        let mut i = 0;
+        while i < state.deferred_count {
+            io::print("  [DEFERRED ");
+            io::print_int(i);
+            io::println("] -> dispatch at idle");
+            save_context();
+            io::println("  JUMP interrupt_table[deferred].handler_addr");
+            restore_context();
+            i = i + 1;
+        }
+        dispatched_now = state.deferred_count;
     }
 
     return InterruptState {
         enabled: state.enabled,
         nesting_depth: new_depth,
-        current_priority: -,
+        current_priority: restored,
+        sp0: state.sp0, sp1: state.sp1, sp2: state.sp2,
         deferred_count: if new_depth == 0 { 0 } else { state.deferred_count },
-        total_dispatched: state.total_dispatched,
+        total_dispatched: state.total_dispatched + dispatched_now,
         total_deferred: state.total_deferred,
     };
 }

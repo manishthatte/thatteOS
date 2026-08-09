@@ -55,6 +55,23 @@ fn make_tty(mid: int) -> TtyState {
     };
 }
 
+fn make_tty_failed() -> TtyState {
+    // Init failure: driver is NOT loaded, no buffers, no module id
+    return TtyState {
+        loaded: false,
+        module_id: 0,
+        privilege: 0,
+        buf_addr: 0,
+        buf_len: 0,
+        line_pos: 0,
+        term_width: 0,
+        term_height: 0,
+        echo_enabled: false,
+        total_bytes_out: 0,
+        total_bytes_in: 0,
+    };
+}
+
 // ---------------------------------------------------------------------------
 // tty_init: load driver at SERVICE privilege
 // ---------------------------------------------------------------------------
@@ -67,7 +84,7 @@ fn tty_init(kernel_priv: trit) -> TtyState {
         0 => io::println("  Privilege: SERVICE (0) — already correct"),
         - => {
             io::println("  Privilege: USER (-1) — ERROR: TTY requires KERNEL to init");
-            return make_tty(0);
+            return make_tty_failed();
         }
     }
 
@@ -97,7 +114,8 @@ fn tty_init(kernel_priv: trit) -> TtyState {
 fn tty_print_ok(tty: TtyState, msg: str) -> TtyState {
     io::print("[+] ");
     io::println(msg);
-    let new_out = tty.total_bytes_out + 4;
+    // 4-byte prefix + message + trailing newline
+    let new_out = tty.total_bytes_out + 4 + str_len(msg) + 1;
     return TtyState { loaded: tty.loaded, module_id: tty.module_id,
         privilege: tty.privilege, buf_addr: tty.buf_addr, buf_len: tty.buf_len,
         line_pos: 0, term_width: tty.term_width, term_height: tty.term_height,
@@ -108,7 +126,8 @@ fn tty_print_ok(tty: TtyState, msg: str) -> TtyState {
 fn tty_print_error(tty: TtyState, msg: str) -> TtyState {
     io::print("[-] ");
     io::println(msg);
-    let new_out = tty.total_bytes_out + 4;
+    // 4-byte prefix + message + trailing newline
+    let new_out = tty.total_bytes_out + 4 + str_len(msg) + 1;
     return TtyState { loaded: tty.loaded, module_id: tty.module_id,
         privilege: tty.privilege, buf_addr: tty.buf_addr, buf_len: tty.buf_len,
         line_pos: 0, term_width: tty.term_width, term_height: tty.term_height,
@@ -119,7 +138,8 @@ fn tty_print_error(tty: TtyState, msg: str) -> TtyState {
 fn tty_print_info(tty: TtyState, msg: str) -> TtyState {
     io::print("[0] ");
     io::println(msg);
-    let new_out = tty.total_bytes_out + 4;
+    // 4-byte prefix + message + trailing newline
+    let new_out = tty.total_bytes_out + 4 + str_len(msg) + 1;
     return TtyState { loaded: tty.loaded, module_id: tty.module_id,
         privilege: tty.privilege, buf_addr: tty.buf_addr, buf_len: tty.buf_len,
         line_pos: 0, term_width: tty.term_width, term_height: tty.term_height,
@@ -128,10 +148,40 @@ fn tty_print_info(tty: TtyState, msg: str) -> TtyState {
 }
 
 // ---------------------------------------------------------------------------
+// TtyIoResult: bytes transferred (-1 on error) + updated driver state,
+// so tty_write/tty_read can keep the byte totals honest.
+// ---------------------------------------------------------------------------
+
+struct TtyIoResult {
+    pub bytes: int,
+    pub tty: TtyState,
+}
+
+fn tty_io_result(bytes: int, tty: TtyState) -> TtyIoResult {
+    return TtyIoResult { bytes: bytes, tty: tty };
+}
+
+fn tty_account_out(tty: TtyState, n: int) -> TtyState {
+    return TtyState { loaded: tty.loaded, module_id: tty.module_id,
+        privilege: tty.privilege, buf_addr: tty.buf_addr, buf_len: tty.buf_len,
+        line_pos: tty.line_pos, term_width: tty.term_width, term_height: tty.term_height,
+        echo_enabled: tty.echo_enabled, total_bytes_out: tty.total_bytes_out + n,
+        total_bytes_in: tty.total_bytes_in };
+}
+
+fn tty_account_in(tty: TtyState, n: int) -> TtyState {
+    return TtyState { loaded: tty.loaded, module_id: tty.module_id,
+        privilege: tty.privilege, buf_addr: tty.buf_addr, buf_len: tty.buf_len,
+        line_pos: tty.line_pos, term_width: tty.term_width, term_height: tty.term_height,
+        echo_enabled: tty.echo_enabled, total_bytes_out: tty.total_bytes_out,
+        total_bytes_in: tty.total_bytes_in + n };
+}
+
+// ---------------------------------------------------------------------------
 // tty_write: write bytes to TTY output with privilege check
 // ---------------------------------------------------------------------------
 
-fn tty_write(tty: TtyState, data: str, len: int, caller_priv: trit) -> int {
+fn tty_write(tty: TtyState, data: str, len: int, caller_priv: trit) -> TtyIoResult {
     io::println("[TTY] tty_write:");
     io::print("  data=\"");
     io::print(data);
@@ -148,7 +198,7 @@ fn tty_write(tty: TtyState, data: str, len: int, caller_priv: trit) -> int {
         - => {
             io::println("  caller=USER(-1) < SERVICE(0) — DENIED");
             io::println("  tty_write: privilege fault");
-            return -1;
+            return tty_io_result(-1, tty);
         }
     }
 
@@ -164,14 +214,14 @@ fn tty_write(tty: TtyState, data: str, len: int, caller_priv: trit) -> int {
     io::print("  tty_write returns ");
     io::println_int(len);
 
-    return len;
+    return tty_io_result(len, tty_account_out(tty, len));
 }
 
 // ---------------------------------------------------------------------------
 // tty_read: read bytes from TTY input with echo
 // ---------------------------------------------------------------------------
 
-fn tty_read(tty: TtyState, buf_addr: int, len: int) -> int {
+fn tty_read(tty: TtyState, buf_addr: int, len: int) -> TtyIoResult {
     io::println("[TTY] tty_read:");
     io::print("  buf_addr=0x");
     io::print_int(buf_addr);
@@ -189,7 +239,7 @@ fn tty_read(tty: TtyState, buf_addr: int, len: int) -> int {
     io::print("  tty_read returns ");
     io::println_int(bytes_read);
 
-    return bytes_read;
+    return tty_io_result(bytes_read, tty_account_in(tty, bytes_read));
 }
 
 // ---------------------------------------------------------------------------
@@ -251,29 +301,34 @@ fn main() {
     // tty_write from KERNEL (allowed)
     io::println("--- tty_write from KERNEL ---");
     let w1 = tty_write(tty, "THATTE-OS 0.2.0 boot message", 28, +);
+    tty = w1.tty;
     io::println("");
 
     // tty_write from SERVICE (allowed)
     io::println("--- tty_write from SERVICE ---");
     let w2 = tty_write(tty, "service message to console", 26, 0);
+    tty = w2.tty;
     io::println("");
 
     // tty_write from USER (denied)
     io::println("--- tty_write from USER (denied) ---");
     let w3 = tty_write(tty, "user attempt", 12, -);
+    tty = w3.tty;
     io::print("  result=");
-    io::println_int(w3);
+    io::println_int(w3.bytes);
     io::println("");
 
     // tty_read with echo
     io::println("--- tty_read with echo ---");
     let r1 = tty_read(tty, 32768, 64);
+    tty = r1.tty;
     io::println("");
 
     // Disable echo (for password input)
     io::println("--- Disable echo (password mode) ---");
     tty = tty_set_echo(tty, false);
     let r2 = tty_read(tty, 32768, 16);
+    tty = r2.tty;
     io::println("");
 
     // Re-enable echo

@@ -77,12 +77,57 @@ fn fd_table_init(pid: int) -> FdTable {
 }
 
 // ---------------------------------------------------------------------------
-// fd_table_set: place fd in the slot matching fd_table.count
+// fd_table_get: fetch the descriptor stored in a slot
 // ---------------------------------------------------------------------------
 
-fn fd_table_set(fd_table: FdTable, new_fd: FileDesc, new_count: int) -> FdTable {
-    let slot = fd_table.count;
-    if slot == 3 {
+fn fd_table_get(fd_table: FdTable, slot: int) -> FileDesc {
+    if slot == 0 { return fd_table.fd0; }
+    elif slot == 1 { return fd_table.fd1; }
+    elif slot == 2 { return fd_table.fd2; }
+    elif slot == 3 { return fd_table.fd3; }
+    elif slot == 4 { return fd_table.fd4; }
+    elif slot == 5 { return fd_table.fd5; }
+    elif slot == 6 { return fd_table.fd6; }
+    elif slot == 7 { return fd_table.fd7; }
+    else { return fd_table.fd8; }
+}
+
+// ---------------------------------------------------------------------------
+// fd_find_free_slot: first slot whose descriptor is not open (-1 = none)
+// ---------------------------------------------------------------------------
+
+fn fd_find_free_slot(fd_table: FdTable) -> int {
+    let mut slot = 0;
+    while slot < 9 {
+        if !fd_table_get(fd_table, slot).open {
+            return slot;
+        }
+        slot = slot + 1;
+    }
+    return -1;
+}
+
+// ---------------------------------------------------------------------------
+// fd_table_set: place fd in the given slot
+// ---------------------------------------------------------------------------
+
+fn fd_table_set(fd_table: FdTable, new_fd: FileDesc, slot: int, new_count: int) -> FdTable {
+    if slot == 0 {
+        return FdTable { pid: fd_table.pid, count: new_count,
+            fd0: new_fd, fd1: fd_table.fd1, fd2: fd_table.fd2,
+            fd3: fd_table.fd3, fd4: fd_table.fd4, fd5: fd_table.fd5,
+            fd6: fd_table.fd6, fd7: fd_table.fd7, fd8: fd_table.fd8 };
+    } elif slot == 1 {
+        return FdTable { pid: fd_table.pid, count: new_count,
+            fd0: fd_table.fd0, fd1: new_fd, fd2: fd_table.fd2,
+            fd3: fd_table.fd3, fd4: fd_table.fd4, fd5: fd_table.fd5,
+            fd6: fd_table.fd6, fd7: fd_table.fd7, fd8: fd_table.fd8 };
+    } elif slot == 2 {
+        return FdTable { pid: fd_table.pid, count: new_count,
+            fd0: fd_table.fd0, fd1: fd_table.fd1, fd2: new_fd,
+            fd3: fd_table.fd3, fd4: fd_table.fd4, fd5: fd_table.fd5,
+            fd6: fd_table.fd6, fd7: fd_table.fd7, fd8: fd_table.fd8 };
+    } elif slot == 3 {
         return FdTable { pid: fd_table.pid, count: new_count,
             fd0: fd_table.fd0, fd1: fd_table.fd1, fd2: fd_table.fd2,
             fd3: new_fd, fd4: fd_table.fd4, fd5: fd_table.fd5,
@@ -116,7 +161,7 @@ fn fd_table_set(fd_table: FdTable, new_fd: FileDesc, new_count: int) -> FdTable 
 }
 
 // ---------------------------------------------------------------------------
-// sys_open: allocate next FD slot, bind to inode
+// sys_open: allocate the first free FD slot, bind to inode
 // ---------------------------------------------------------------------------
 
 fn sys_open(fd_table: FdTable, ino: int, mode: trit, inode_name: str) -> FdTable {
@@ -127,34 +172,45 @@ fn sys_open(fd_table: FdTable, ino: int, mode: trit, inode_name: str) -> FdTable
     io::print(" mode=");
     io::println(mode_name(mode));
 
-    if fd_table.count >= 9 {
+    let slot = fd_find_free_slot(fd_table);
+    if slot < 0 {
         io::println("  ERROR: FD table full (9 max) — EMFILE");
         return fd_table;
     }
 
-    let new_fd = make_fd(fd_table.count, ino, mode);
+    let new_fd = make_fd(slot, ino, mode);
     io::print("  allocated fd=");
-    io::println_int(fd_table.count);
-    return fd_table_set(fd_table, new_fd, fd_table.count + 1);
+    io::println_int(slot);
+    return fd_table_set(fd_table, new_fd, slot, fd_table.count + 1);
 }
 
 // ---------------------------------------------------------------------------
 // sys_close: release file descriptor
+// Returns the exit code AND the updated table (slot freed, count reduced).
 // ---------------------------------------------------------------------------
 
-fn sys_close(fd_num: int, fd_table: FdTable) -> int {
+struct CloseResult {
+    pub code: int,
+    pub table: FdTable,
+}
+
+fn close_result(code: int, table: FdTable) -> CloseResult {
+    return CloseResult { code: code, table: table };
+}
+
+fn sys_close(fd_num: int, fd_table: FdTable) -> CloseResult {
     io::print("[SYS_CLOSE] fd=");
     io::println_int(fd_num);
     if fd_num < 0 || fd_num > 8 {
         io::println("  ERROR: invalid fd — EBADF");
-        return -1;
+        return close_result(-1, fd_table);
     }
-    if fd_num < fd_table.count {
+    if fd_table_get(fd_table, fd_num).open {
         io::println("  fd closed, offset reset");
-        return 0;
+        return close_result(0, fd_table_set(fd_table, empty_fd(), fd_num, fd_table.count - 1));
     }
     io::println("  ERROR: fd not open — EBADF");
-    return -1;
+    return close_result(-1, fd_table);
 }
 
 // ---------------------------------------------------------------------------
@@ -219,7 +275,7 @@ fn print_fdtable(t: FdTable) {
     let fds: [FileDesc] = [t.fd0, t.fd1, t.fd2, t.fd3, t.fd4,
                             t.fd5, t.fd6, t.fd7, t.fd8];
     let mut i = 0;
-    while i < t.count {
+    while i < 9 {
         let fd = fds[i];
         if fd.open {
             io::print("  fd[");
@@ -267,15 +323,18 @@ fn main() {
     io::println("");
 
     io::println("--- Close fd=3 ---");
-    let c = sys_close(3, fdt);
+    let cr = sys_close(3, fdt);
+    fdt = cr.table;
     io::print("  result: ");
-    io::println_int(c);
+    io::println_int(cr.code);
+    print_fdtable(fdt);
     io::println("");
 
     io::println("--- Invalid fd close ---");
-    let c2 = sys_close(99, fdt);
+    let cr2 = sys_close(99, fdt);
+    fdt = cr2.table;
     io::print("  result: ");
-    io::println_int(c2);
+    io::println_int(cr2.code);
     io::println("");
 
     io::println("=== FD table verified ===");

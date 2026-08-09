@@ -101,11 +101,10 @@ fn main() {
     let mut i = 0;
     while i < size {
         let ch  = str_slice(content, i, i + 1);
-        let byt = str_parse_int(str_slice(content, i, i + 1));
-        // treat as unsigned 0-255 via char code
-        // ManiT doesn't expose char-to-int directly; use str_len trick
-        // Instead we print the hex of the character using its position in content
-        // and the ternary representation
+        // Real char code of the byte (str_char_at returns a signed byte;
+        // normalise to unsigned 0-255)
+        let mut byt = str_char_at(content, i);
+        if byt < 0 { byt = byt + 256; }
         let bt = to_balanced_ternary(byt);
         let hex = to_hex(byt);
         let asc = if is_printable(byt) == 1 { ch } else { "." };

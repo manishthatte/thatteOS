@@ -43,6 +43,25 @@ fn set_privilege(current_priv: int, new_level: int) -> int {
 }
 
 // ---------------------------------------------------------------------------
+// priv_downgrade_self: explicitly-audited voluntary privilege drop.
+// A process may always LOWER its own privilege (SERVICE -> USER). This is a
+// separate, monotonic primitive: it can never raise privilege, so it needs
+// no KERNEL authorisation and it never forges the caller's level.
+// ---------------------------------------------------------------------------
+
+fn priv_downgrade_self(current_priv: int, new_level: int) -> int {
+    if new_level >= current_priv {
+        io::println("  priv_downgrade_self: FAULT — can only lower privilege");
+        return current_priv;
+    }
+    io::print("  priv_downgrade_self: voluntary drop -> ");
+    io::println(priv_name(new_level));
+    io::print("  STATUS[26..25] written: ");
+    io::println(priv_name(new_level));
+    return new_level;
+}
+
+// ---------------------------------------------------------------------------
 // privilege_fault_handler
 // ---------------------------------------------------------------------------
 
@@ -86,7 +105,7 @@ fn sys_priv_set(current_priv: int, requested: int) -> int {
                 }
                 - => {
                     io::println("  SERVICE -> USER allowed (downgrade)");
-                    return set_privilege(1, requested);
+                    return priv_downgrade_self(current_priv, requested);
                 }
             }
         }

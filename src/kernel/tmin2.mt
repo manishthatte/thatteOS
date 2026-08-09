@@ -78,7 +78,7 @@ fn perm_name(p: trit) -> str {
     }
 }
 
-fn bool3_name(v: T3Bool) -> str {
+fn bool3_name(v: bool3) -> str {
     tif v {
         + => return "TRUE (+1)",
         0 => return "MAYBE (0)",
@@ -100,7 +100,7 @@ fn bool3_name(v: T3Bool) -> str {
 //   ring=SERVICE(0), page=RESTRICTED(0)  -> min= 0,  0== 0 -> ALLOW
 //   ring=USER(-1),   page=PUBLIC(-1)     -> min=-1, -1==-1 -> ALLOW
 
-fn permission_check(page_perm: trit, ring: trit) -> T3Bool {
+fn permission_check(page_perm: trit, ring: trit) -> bool3 {
     let gate_out = tmin2(ring, page_perm);
 
     io::print("  permission_check: ring=");
@@ -145,7 +145,7 @@ fn permission_check(page_perm: trit, ring: trit) -> T3Bool {
 // the required level? Uses tmin2 internally — if min(current, required)
 // equals required, then current >= required.
 
-fn can_access(required: trit, current: trit) -> T3Bool {
+fn can_access(required: trit, current: trit) -> bool3 {
     let gate_out = tmin2(current, required);
 
     io::print("  can_access: required=");

@@ -15,6 +15,8 @@ set -e
 cd "$(dirname "$0")/.."
 
 MANITC="${MANITC:-../manitc/target/release/manitc}"
+CLANG="${CLANG:-clang-19}"
+RUNTIME_SRC="${RUNTIME_SRC:-../manitc/runtime/manit_runtime.c}"
 mkdir -p build
 RUNTIME=build/manit_runtime.o
 USRDIR=userspace
@@ -25,10 +27,11 @@ CURL_LIBS=$(pkg-config --libs libcurl 2>/dev/null || echo "-lcurl")
 SDL_CFLAGS=$(pkg-config --cflags sdl2 SDL2_ttf 2>/dev/null || echo "")
 SDL_LIBS=$(pkg-config --libs sdl2 SDL2_ttf 2>/dev/null || echo "-lSDL2 -lSDL2_ttf")
 
-# Ensure runtime object exists (or regenerate if headers changed)
-if [ ! -f "$RUNTIME" ]; then
+# Ensure runtime object exists and is not stale (regenerate if the C source
+# is newer than the object)
+if [ ! -f "$RUNTIME" ] || [ "$RUNTIME_SRC" -nt "$RUNTIME" ]; then
     echo "[setup] compiling manit_runtime.c → $RUNTIME"
-    clang-19 -O2 $CURL_CFLAGS $SDL_CFLAGS -c "${RUNTIME_SRC:-../manitc/runtime/manit_runtime.c}" -o "$RUNTIME"
+    "$CLANG" -O2 $CURL_CFLAGS $SDL_CFLAGS -c "$RUNTIME_SRC" -o "$RUNTIME"
 fi
 
 mkdir -p "$BINDIR"
@@ -52,7 +55,7 @@ for prog in $PROGRAMS; do
     sed 's/ret ptr 0$/ret ptr null/g' "$ll" > "$ll_fixed"
 
     echo "  link     → bin/${prog}"
-    clang-19 "$ll_fixed" "$RUNTIME" -o "$bin" -lm $CURL_LIBS $SDL_LIBS
+    "$CLANG" "$ll_fixed" "$RUNTIME" -o "$bin" -lm $CURL_LIBS $SDL_LIBS
 
     rm -f "$ll" "$ll_fixed"
     echo "  ok"

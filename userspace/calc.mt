@@ -1,6 +1,7 @@
 // userspace/calc.mt — THATTEOS ternary calculator
 //
-// Standalone userspace program.  Interactive: enter "<a> <op> <b>".
+// Standalone userspace program.  Interactive: enter "<a> <op> <b>"
+// (infix) or "<op> <a> <b>" (prefix) — both forms are accepted.
 // All results displayed in both decimal and balanced ternary.
 //
 // Ops: + - * / % ** (power)  abs  neg
@@ -58,6 +59,29 @@ fn print_result(a: int, op: str, b: int, result: int) {
     io::println(" trits]");
 }
 
+fn is_binop(op: str) -> bool {
+    return op == "+" || op == "-" || op == "*" || op == "/" || op == "%" || op == "**";
+}
+
+fn apply_op(a: int, op: str, b: int) {
+    if op == "+" { print_result(a, "+", b, a + b); }
+    elif op == "-" { print_result(a, "-", b, a - b); }
+    elif op == "*" { print_result(a, "*", b, a * b); }
+    elif op == "/" {
+        if b == 0 { io::println("  error: division by zero"); }
+        else { print_result(a, "/", b, a / b); }
+    }
+    elif op == "%" {
+        if b == 0 { io::println("  error: modulo by zero"); }
+        else { print_result(a, "%", b, a - (a / b) * b); }
+    }
+    elif op == "**" { print_result(a, "**", b, power(a, b)); }
+    else {
+        io::print("  ? unknown op: ");
+        io::println(op);
+    }
+}
+
 fn power(base: int, exp: int) -> int {
     if exp == 0 { return 1; }
     if exp < 0  { return 0; }
@@ -73,6 +97,7 @@ fn power(base: int, exp: int) -> int {
 fn main() {
     io::println("=== THATTEOS calc  —  balanced ternary arithmetic ===");
     io::println("  ops: + - * / % ** abs neg");
+    io::println("  forms: <a> <op> <b>   or   <op> <a> <b>");
     io::println("  type 'quit' to exit");
     io::println("");
 
@@ -118,31 +143,30 @@ fn main() {
                     io::print(to_balanced_ternary(r));
                     io::println("]");
                 }
-                else {
-                    // binary: "a op b"
+                elif is_binop(op) {
+                    // prefix: "<op> <a> <b>"
                     let sp2 = str_find(rest, " ");
                     if sp2 == -1 {
-                        io::println("  usage: <num> <op> <num>  or  abs/neg <num>");
+                        io::println("  usage: <a> <op> <b>  or  <op> <a> <b>  or  abs/neg <num>");
                     } else {
-                        let a_s = str_slice(rest, 0, sp2);
+                        let a = str_parse_int(str_slice(rest, 0, sp2));
+                        let b = str_parse_int(str_trim(str_slice(rest, sp2 + 1, str_len(rest))));
+                        apply_op(a, op, b);
+                    }
+                }
+                else {
+                    // infix: "<a> <op> <b>" — first token is the number a
+                    let sp2 = str_find(rest, " ");
+                    if sp2 == -1 {
+                        io::println("  usage: <a> <op> <b>  or  <op> <a> <b>  or  abs/neg <num>");
+                    } else {
+                        let op2 = str_slice(rest, 0, sp2);
                         let b_s = str_trim(str_slice(rest, sp2 + 1, str_len(rest)));
-                        let a = str_parse_int(a_s);
-                        let b = str_parse_int(b_s);
-                        if op == "+" { print_result(a, "+", b, a + b); }
-                        elif op == "-" { print_result(a, "-", b, a - b); }
-                        elif op == "*" { print_result(a, "*", b, a * b); }
-                        elif op == "/" {
-                            if b == 0 { io::println("  error: division by zero"); }
-                            else { print_result(a, "/", b, a / b); }
-                        }
-                        elif op == "%" {
-                            if b == 0 { io::println("  error: modulo by zero"); }
-                            else { print_result(a, "%", b, a - (a / b) * b); }
-                        }
-                        elif op == "**" { print_result(a, "**", b, power(a, b)); }
-                        else {
+                        if is_binop(op2) {
+                            apply_op(str_parse_int(op), op2, str_parse_int(b_s));
+                        } else {
                             io::print("  ? unknown op: ");
-                            io::println(op);
+                            io::println(op2);
                         }
                     }
                 }

@@ -33,7 +33,7 @@ struct TritStream {
     pub chan_idx: t9,     // physical SWCNT channel index in fabric
     pub sender_pid: t9,     // source process
     pub receiver_pid: t9,   // destination process
-    pub active: T3Bool,     // +1=active, 0=suspended, -1=closed
+    pub active: bool3,      // +1=active, 0=suspended, -1=closed
 }
 
 // ---------------------------------------------------------------------------

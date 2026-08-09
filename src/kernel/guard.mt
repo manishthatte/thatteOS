@@ -156,7 +156,19 @@ fn validate_buffer(addr: int, len: int) -> trit {
         io::println("  [GUARD] zero-length buffer — WARNING");
         return 0;
     }
-    elif len > 19683 {
+    // The buffer [addr, addr+len) must stay within one MST zone: a buffer
+    // that starts in user space (addr < 0) and ends at/after the MST
+    // boundary would span into shared/kernel space.
+    let end = addr + len - 1;
+    if addr < 0 && end >= 0 {
+        io::println("  [GUARD] buffer crosses MST boundary (user -> kernel) — INVALID");
+        return -;
+    }
+    if addr == 0 && end > 0 {
+        io::println("  [GUARD] buffer crosses MST boundary (shared -> kernel) — INVALID");
+        return -;
+    }
+    if len > 19683 {
         io::println("  [GUARD] buffer exceeds page size (3^9) — WARNING");
         return 0;
     }
@@ -344,6 +356,9 @@ fn main() {
     let r_b3 = validate_buffer(4096, 0);
     io::print("  validate_buffer(4096, 0) = ");
     io::println(guard_result_name(r_b3));
+    let r_b4 = validate_buffer(-100, 200);
+    io::print("  validate_buffer(-100, 200) = ");
+    io::println(guard_result_name(r_b4));
     io::println("");
 
     // --- Checksum validation ---

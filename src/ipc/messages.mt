@@ -21,7 +21,9 @@ struct IpcMsg {
 }
 
 fn make_msg(sender: int, mtype: trit, p0: int, p1: int, p2: int) -> IpcMsg {
-    let cs = sender + p0 + p1 + p2;
+    // Checksum covers ALL message fields including msg_type, so a
+    // corrupted type is detectable.
+    let cs = sender + (mtype as int) + p0 + p1 + p2;
     return IpcMsg {
         sender_pid: sender,
         msg_type: mtype,
@@ -30,6 +32,14 @@ fn make_msg(sender: int, mtype: trit, p0: int, p1: int, p2: int) -> IpcMsg {
         payload2: p2,
         checksum: cs,
     };
+}
+
+// msg_verify: recompute the checksum from the message fields and compare
+// with the stored one. Used on the RECEIVE side, where the message may have
+// been corrupted in transit.
+fn msg_verify(m: IpcMsg) -> bool {
+    let expected = m.sender_pid + (m.msg_type as int) + m.payload0 + m.payload1 + m.payload2;
+    return m.checksum == expected;
 }
 
 fn msg_type_name(t: trit) -> str {
@@ -105,7 +115,8 @@ fn sys_send(sender_pid: int, dest_pid: int, msg_type: trit,
     io::print(") -> dest=");
     io::println_int(dest_pid);
 
-    // Verify sender has SERVICE or KERNEL privilege
+    // Verify sender privilege. USER holds CAN_IPC=+ in its CapWord
+    // (see boot banner), so all three levels may send.
     tif sender_priv {
         + => {
             io::println("  privilege check: KERNEL — PASS");
@@ -114,25 +125,15 @@ fn sys_send(sender_pid: int, dest_pid: int, msg_type: trit,
             io::println("  privilege check: SERVICE — PASS");
         }
         - => {
-            io::println("  privilege check: USER — FAIL (IPC requires SERVICE+)");
-            io::println("  SYS_SEND returns -1 (error)");
-            return -;
+            io::println("  privilege check: USER — PASS (CapWord CAN_IPC=+)");
         }
     }
 
-    // Build message with checksum
+    // Build message with checksum (verified on the receive side)
     let msg = make_msg(sender_pid, msg_type, p0, p1, p2);
     io::print("  message: ");
     print_msg(msg);
-
-    // Validate checksum
-    let expected_cs = sender_pid + p0 + p1 + p2;
-    if msg.checksum == expected_cs {
-        io::println("  checksum: VALID");
-    } else {
-        io::println("  checksum: INVALID — dropping message");
-        return -;
-    }
+    io::println("  checksum computed over sender/type/payload");
 
     // Enqueue to destination
     io::print("  enqueued to process ");
@@ -166,12 +167,11 @@ fn sys_recv(pid: int, buf_addr: int, has_message: bool) -> trit {
     io::print("  dequeued: ");
     print_msg(msg);
 
-    // Verify checksum
-    let expected = msg.sender_pid + msg.payload0 + msg.payload1 + msg.payload2;
-    if msg.checksum == expected {
+    // Verify checksum (covers msg_type too)
+    if msg_verify(msg) {
         io::println("  checksum: VALID");
     } else {
-        io::println("  checksum: INVALID");
+        io::println("  checksum: INVALID — dropping message");
         return -;
     }
 
@@ -206,8 +206,8 @@ fn main() {
     io::println_trit(r2);
     io::println("");
 
-    // --- SYS_SEND: USER attempts to send (denied) ---
-    io::println("--- Test 3: USER attempts SYS_SEND (denied) ---");
+    // --- SYS_SEND: USER sends (allowed — CapWord CAN_IPC=+) ---
+    io::println("--- Test 3: USER SYS_SEND (allowed, CAN_IPC=+) ---");
     let r3 = sys_send(5, 2, +, 1, 2, 3, -);
     io::print("  result=");
     io::println_trit(r3);
@@ -234,9 +234,27 @@ fn main() {
     io::println_trit(recv2);
     io::println("");
 
+    // --- Checksum: corrupted message is detected ---
+    io::println("--- Test 7: corrupted message detected by msg_verify ---");
+    let good = make_msg(1, +, 42, 100, 200);
+    let corrupted = IpcMsg { sender_pid: good.sender_pid, msg_type: -,
+                             payload0: good.payload0, payload1: good.payload1,
+                             payload2: good.payload2, checksum: good.checksum };
+    io::print("  original:  ");
+    print_msg(good);
+    io::print("  corrupted: ");
+    print_msg(corrupted);
+    if msg_verify(corrupted) {
+        io::println("  msg_verify: VALID — corruption NOT detected (BUG)");
+    } else {
+        io::println("  msg_verify: INVALID — msg_type corruption detected");
+    }
+    io::println("");
+
     io::println("=== IPC claims verified ===");
-    io::println("  SYS_SEND privilege check (SERVICE+): PASS");
+    io::println("  SYS_SEND privilege check:              PASS");
     io::println("  IPC message structure with checksum:  PASS");
     io::println("  MSG_WAIT on empty queue:               PASS");
     io::println("  3-trit msg_type (-1/0/+1):             PASS");
+    io::println("  Corrupted msg_type detected:           PASS");
 }

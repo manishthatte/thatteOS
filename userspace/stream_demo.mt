@@ -26,7 +26,7 @@ struct TritStream {
     pub chan_idx: int,
     pub sender_pid: int,
     pub receiver_pid: int,
-    pub active: T3Bool,
+    pub active: bool3,
 }
 
 fn stream_create(sender: int, receiver: int) -> TritStream {

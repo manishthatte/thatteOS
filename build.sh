@@ -35,16 +35,21 @@ SDL_LIBS=$(pkg-config --libs sdl2 SDL2_ttf 2>/dev/null || echo "-lSDL2 -lSDL2_tt
 
 mkdir -p build
 RUNTIME=build/manit_runtime.o
-if [ ! -f "$RUNTIME" ]; then
+# Rebuild the runtime when missing OR when the C source is newer than the
+# object, so a stale runtime never links silently.
+if [ ! -f "$RUNTIME" ] || [ "$RUNTIME_SRC" -nt "$RUNTIME" ]; then
     echo "[setup] compiling manit_runtime.c"
     "$CLANG" -O2 $CURL_CFLAGS $SDL_CFLAGS -c "$RUNTIME_SRC" -o "$RUNTIME"
 fi
 
-echo "[1/2] compiling thatteos.mt → LLVM IR"
+echo "[1/3] compiling thatteos.mt → LLVM IR"
 "$MANITC" compile --target llvm thatteos.mt -o build/thatteos.ll
 
-echo "[2/2] linking"
-"$CLANG" build/thatteos.ll "$RUNTIME" -o thatteos -lm $CURL_LIBS $SDL_LIBS
+echo "[2/3] patching  ret ptr 0 → ret ptr null"
+sed 's/ret ptr 0$/ret ptr null/g' build/thatteos.ll > build/thatteos_fixed.ll
+
+echo "[3/3] linking"
+"$CLANG" build/thatteos_fixed.ll "$RUNTIME" -o thatteos -lm $CURL_LIBS $SDL_LIBS
 
 echo ""
 echo "  done.  binary: ./thatteos"

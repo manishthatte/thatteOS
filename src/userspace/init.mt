@@ -31,8 +31,8 @@ fn access_kernel_addr(caller_priv: trit, addr: int) -> bool {
     io::print("[INIT] attempting access to kernel addr 0x");
     io::println_int(addr);
 
-    // MST of addr (positive = kernel space)
-    let mst: trit = if addr > 0 { + } else { 0 };
+    // MST of addr: positive = kernel space, zero = shared, negative = user
+    let mst: trit = if addr > 0 { + } elif addr < 0 { - } else { 0 };
 
     tif mst {
         + => {

@@ -251,21 +251,35 @@ fn print_entry(e: LogEntry) {
     }
 }
 
+fn klog_get(log: KernelLog, idx: int) -> LogEntry {
+    if idx == 0 { return log.e0; }
+    elif idx == 1 { return log.e1; }
+    elif idx == 2 { return log.e2; }
+    elif idx == 3 { return log.e3; }
+    elif idx == 4 { return log.e4; }
+    elif idx == 5 { return log.e5; }
+    elif idx == 6 { return log.e6; }
+    elif idx == 7 { return log.e7; }
+    else { return log.e8; }
+}
+
 fn klog_dump(log: KernelLog) {
     io::println("[KLOG] --- dmesg: kernel log dump ---");
     io::print("  entries: ");
     io::print_int(log.count);
     io::println("/9");
 
-    print_entry(log.e0);
-    print_entry(log.e1);
-    print_entry(log.e2);
-    print_entry(log.e3);
-    print_entry(log.e4);
-    print_entry(log.e5);
-    print_entry(log.e6);
-    print_entry(log.e7);
-    print_entry(log.e8);
+    // Print in chronological order. Once the ring has wrapped, the oldest
+    // entry sits at write_idx (the next slot to be overwritten); before
+    // wrapping, the oldest is slot 0.
+    let start = if log.count >= 9 { log.write_idx } else { 0 };
+    let mut i = 0;
+    while i < log.count {
+        let mut idx = start + i;
+        if idx >= 9 { idx = idx - 9; }
+        print_entry(klog_get(log, idx));
+        i = i + 1;
+    }
 
     io::println("[KLOG] --- end of log ---");
 }

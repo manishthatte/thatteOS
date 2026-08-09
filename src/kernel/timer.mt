@@ -180,25 +180,36 @@ fn timer_tick(timer: TimerState, queue: SleepQueue) -> TickResult {
     let e7 = wake_entry_if_due(queue.s7, new_tick);
     let e8 = wake_entry_if_due(queue.s8, new_tick);
 
+    // Count how many entries were woken (valid before, invalidated now) so
+    // queue.count reflects the number of occupied slots.
+    let mut woken = 0;
+    if queue.s0.valid && !e0.valid { woken = woken + 1; }
+    if queue.s1.valid && !e1.valid { woken = woken + 1; }
+    if queue.s2.valid && !e2.valid { woken = woken + 1; }
+    if queue.s3.valid && !e3.valid { woken = woken + 1; }
+    if queue.s4.valid && !e4.valid { woken = woken + 1; }
+    if queue.s5.valid && !e5.valid { woken = woken + 1; }
+    if queue.s6.valid && !e6.valid { woken = woken + 1; }
+    if queue.s7.valid && !e7.valid { woken = woken + 1; }
+    if queue.s8.valid && !e8.valid { woken = woken + 1; }
+
     let new_queue = SleepQueue {
-        count: queue.count,
+        count: queue.count - woken,
         s0: e0, s1: e1, s2: e2,
         s3: e3, s4: e4, s5: e5,
         s6: e6, s7: e7, s8: e8,
     };
 
     // Check quantum expiry
+    let mut final_quantum_ticks = new_quantum_ticks;
     if new_quantum_ticks >= timer.quantum {
         io::println("  [TIMER] quantum expired (3 ticks) — preempt current process");
         io::println("  -> scheduler_run() invoked");
-        return TickResult {
-            timer: TimerState { tick: new_tick, quantum: timer.quantum, ticks_this_quantum: 0 },
-            queue: new_queue,
-        };
+        final_quantum_ticks = 0;
     }
 
     return TickResult {
-        timer: TimerState { tick: new_tick, quantum: timer.quantum, ticks_this_quantum: new_quantum_ticks },
+        timer: TimerState { tick: new_tick, quantum: timer.quantum, ticks_this_quantum: final_quantum_ticks },
         queue: new_queue,
     };
 }

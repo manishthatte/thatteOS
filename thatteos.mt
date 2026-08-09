@@ -67,8 +67,9 @@ fn boot_sysinfo() {
 
 fn boot_idt_init() {
     io::println("  [BOOT] interrupt_init: registering 27 IDT vectors");
-    io::println("         vectors  0- 8 -> priority HIGH   (+1) — syscall, fault, IRQ");
-    io::println("         vectors  9-17 -> priority MEDIUM ( 0) — device, IPC, timer");
+    io::println("         vector    0   -> priority MEDIUM ( 0) — timer");
+    io::println("         vectors  1- 5 -> priority HIGH   (+1) — syscall, faults");
+    io::println("         vectors  6-17 -> priority MEDIUM ( 0) — device, IPC, IRQ");
     io::println("         vectors 18-26 -> priority LOW    (-1) — deferred work");
     io::println("         nesting: HIGH preempts MEDIUM/LOW; MEDIUM preempts LOW");
     io::println("  [BOOT] STATUS[24] = +1  — interrupts ENABLED");
@@ -270,12 +271,13 @@ fn cmd_help() {
     io::println("");
     io::println("  Ternary:");
     io::println("    trit <N>         Convert integer N to balanced ternary");
+    io::println("    caps             Show per-process 9-trit CapWords");
     io::println("    echo [text]      Print text to stdout");
     io::println("");
     io::println("  Shell:");
     io::println("    clear            Clear screen (27 blank lines)");
     io::println("    help             Show this message");
-    io::println("    exit             Exit the shell");
+    io::println("    exit / quit      Exit the shell");
 }
 
 // ============================================================================
@@ -776,6 +778,11 @@ fn cmd_head(args: str) {
     let path  = if space == -1 { args } else { str_slice(args, 0, space) };
     let narg  = if space == -1 { "10" } else { str_trim(str_slice(args, space + 1, str_len(args))) };
     let max_lines = str_parse_int(narg);
+    if max_lines <= 0 {
+        io::print("  head: invalid line count: ");
+        io::println(narg);
+        return;
+    }
 
     if !fs::exists(path) {
         io::print("  head: no such file: ");
@@ -834,6 +841,10 @@ fn cmd_wc(path: str) {
             }
         }
         pos = pos + 1;
+    }
+    // A final line without a trailing newline still counts as a line
+    if total > 0 && str_slice(content, total - 1, total) != "\n" {
+        lines = lines + 1;
     }
     io::print("  lines=");
     io::print_int(lines);
@@ -920,6 +931,27 @@ fn cmd_run(path: str) {
 }
 
 // ============================================================================
+// Command: caps
+// ============================================================================
+
+fn cmd_caps() {
+    io::println("  CapWord (9-trit capability word) per process");
+    io::println("  ============================================");
+    io::println("  Trits:  CAN_FORK CAN_EXEC CAN_IPC CAN_IO CAN_MOD");
+    io::println("          CAN_PRIV CAN_ALLOC CAN_SIGNAL CAN_FS");
+    io::println("  Values: GRANTED(+1)  INHERITED(0)  DENIED(-1)");
+    io::println("");
+    io::println("  PID  NAME    CAPWORD");
+    io::println("  ---  ------  ----------------------------");
+    io::println("   0   idle    +  +  +  +  +  +  +  +  +   (KERNEL: all granted)");
+    io::println("   1   init    +  +  +  +  +  -  +  +  +   (SERVICE: CAN_PRIV denied)");
+    io::println("   2   shell   +  +  +  -  -  -  +  -  +   (USER)");
+    io::println("");
+    io::println("  Attenuation rule: a child CapWord is tmin2(parent, requested) —");
+    io::println("  a child can never hold a capability its parent lacks.");
+}
+
+// ============================================================================
 // Command: clear
 // ============================================================================
 
@@ -977,8 +1009,9 @@ fn dispatch(raw_cmd: str, tick: int, cmd_count: int) -> int {
     elif name == "echo"    { cmd_echo(args); }
     elif name == "kill"    { cmd_kill(args); }
     elif name == "run"     { cmd_run(args); }
+    elif name == "caps"    { cmd_caps(); }
     elif name == "clear"   { cmd_clear(); }
-    elif name == "exit" {
+    elif name == "exit" || name == "quit" {
         io::println("  SYS_EXIT(0) — process.state = EXITED(-3)");
         io::println("  Goodbye.");
         return 0;

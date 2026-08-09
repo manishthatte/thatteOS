@@ -110,6 +110,12 @@ fn context_bank_init() -> ContextBank {
 }
 
 fn context_bank_get(bank: ContextBank, pid: int) -> CPUContext {
+    if pid < 0 || pid > 8 {
+        io::print("[CTX] context_bank_get: invalid PID ");
+        io::print_int(pid);
+        io::println(" (valid: 0-8) — returning empty context");
+        return empty_context(pid);
+    }
     if pid == 0 { return bank.c0; }
     elif pid == 1 { return bank.c1; }
     elif pid == 2 { return bank.c2; }
@@ -123,6 +129,12 @@ fn context_bank_get(bank: ContextBank, pid: int) -> CPUContext {
 
 fn context_bank_set(bank: ContextBank, ctx: CPUContext) -> ContextBank {
     let pid = ctx.pid;
+    if pid < 0 || pid > 8 {
+        io::print("[CTX] context_bank_set: invalid PID ");
+        io::print_int(pid);
+        io::println(" (valid: 0-8) — bank unchanged");
+        return bank;
+    }
     if pid == 0 { return ContextBank { c0: ctx, c1: bank.c1, c2: bank.c2,
         c3: bank.c3, c4: bank.c4, c5: bank.c5,
         c6: bank.c6, c7: bank.c7, c8: bank.c8 }; }

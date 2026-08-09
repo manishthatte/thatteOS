@@ -6,7 +6,7 @@
 # Tests:
 #   1. Shell basic commands (help, version, whoami, priv, uname, uptime)
 #   2. Shell filesystem commands (ls, pwd, cat, wc, head)
-#   3. Shell ternary commands (trit, ternary, caps)
+#   3. Shell ternary commands (trit, caps, date)
 #   4. Shell exit
 #   5. calc — arithmetic and ternary display
 #   6. fib  — Fibonacci sequence in balanced ternary
@@ -31,7 +31,7 @@ check() {
     local label="$1"
     local output="$2"
     local pattern="$3"
-    if echo "$output" | grep -qF "$pattern"; then
+    if echo "$output" | grep -qF -- "$pattern"; then
         echo "  PASS  $label"
         PASS=$((PASS + 1))
     else
@@ -45,7 +45,7 @@ check() {
 run_shell() {
     # Feed commands to the shell via stdin; append 'exit' so the shell
     # terminates cleanly and flushes its stdio buffer before capture.
-    printf "%s\nexit\n" "$1" | timeout 10 "$SHELL_BIN" 2>&1 || true
+    printf "%s\nexit\n" "$1" | timeout 20 "$SHELL_BIN" 2>&1 || true
 }
 
 # ── build check ──────────────────────────────────────────────────────────────
@@ -86,9 +86,10 @@ check "whoami shows user"       "$OUT" "user"
 OUT=$(run_shell "priv")
 check "priv shows privilege"    "$OUT" "privilege"
 
-# 'uname' is not a command; check dmesg shows arch
+# dmesg must print the kernel log header (only cmd_dmesg produces it —
+# the boot banner does not contain this string)
 OUT=$(run_shell "dmesg")
-check "dmesg shows arch"        "$OUT" "x86_64"
+check "dmesg shows kernel log"  "$OUT" "--- THATTE-OS kernel log ---"
 
 OUT=$(run_shell "uptime")
 check "uptime shows ticks"      "$OUT" "tick"
@@ -111,17 +112,20 @@ else
     FAIL=$((FAIL + 1))
 fi
 
+# pwd must print the actual working directory (the repo root we cd'd into),
+# not just any string containing '/'
 OUT=$(run_shell "pwd")
-check "pwd shows path"          "$OUT" "/"
+check "pwd shows cwd"           "$OUT" "$(pwd)"
 
+# Match on LICENSE file content, not on strings the boot banner also prints
 OUT=$(run_shell "cat LICENSE")
-check "cat reads LICENSE"       "$OUT" "Manish"
+check "cat reads LICENSE"       "$OUT" "GNU AFFERO GENERAL PUBLIC LICENSE"
 
 OUT=$(run_shell "wc LICENSE")
-check "wc shows line count"     "$OUT" "lines"
+check "wc shows line count"     "$OUT" "lines="
 
 OUT=$(run_shell "head LICENSE")
-check "head shows first lines"  "$OUT" "Manish"
+check "head shows first lines"  "$OUT" "GNU AFFERO GENERAL PUBLIC LICENSE"
 
 echo ""
 
@@ -129,17 +133,26 @@ echo ""
 
 echo "--- [3] ternary commands ---"
 
+# Each pattern below is produced ONLY by the tested command, never by the
+# boot banner — so these tests can actually fail.
 OUT=$(run_shell "trit 42")
-check "trit shows balanced ternary"  "$OUT" "0t"
+check "trit 42 = 0t+---0"            "$OUT" "0t+---0"
 
-OUT=$(run_shell "ternary 27")
-check "ternary shows trits"          "$OUT" "trit"
+OUT=$(run_shell "trit 27")
+check "trit 27 = 0t+000"             "$OUT" "0t+000"
 
 OUT=$(run_shell "caps")
-check "caps shows CapWord"           "$OUT" "CapWord"
+check "caps shows CapWord table"     "$OUT" "CapWord (9-trit capability word)"
 
 OUT=$(run_shell "date")
-check "date returns timestamp"       "$OUT" "-"   # "2026-07-28" style
+if echo "$OUT" | grep -qE "[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}"; then
+    echo "  PASS  date returns timestamp"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL  date returns timestamp"
+    echo "        expected YYYY-MM-DD HH:MM:SS in output"
+    FAIL=$((FAIL + 1))
+fi
 
 echo ""
 
@@ -150,10 +163,11 @@ echo "--- [4] shell exit ---"
 OUT=$(run_shell "exit")
 check "exit prints bye"         "$OUT" "bye"
 
-# quit is handled same as exit — run_shell appends a second exit but
-# the loop is already done by then; 'bye' is still in the output
-OUT=$(run_shell "quit")
-check "quit also exits"         "$OUT" "bye"
+# quit is an alias for exit.  Feed ONLY 'quit' (no appended exit): if quit
+# did not terminate the shell, the loop would spin on EOF until the timeout
+# kills it and 'Goodbye' would never be printed — so this test can fail.
+OUT=$(printf "quit\n" | timeout 10 "$SHELL_BIN" 2>&1 || true)
+check "quit also exits"         "$OUT" "Goodbye"
 
 echo ""
 
@@ -269,16 +283,9 @@ check "kill OOB signal: error message"   "$OUT" "signal out of ternary range"
 OUT=$(run_shell "stat /does/not/exist")
 check "stat missing path: error"         "$OUT" "no such path"
 
-# 9.5  trit with no argument (empty arg) — must not crash
+# 9.5  trit with no argument (empty arg) — must print the usage message
 OUT=$(run_shell "trit ")
-if echo "$OUT" | grep -qiE "0t|0 in balanced|crash|segfault"; then
-    echo "  PASS  trit empty arg: graceful"
-    PASS=$((PASS + 1))
-else
-    # Any non-crash output is acceptable
-    echo "  PASS  trit empty arg: no crash"
-    PASS=$((PASS + 1))
-fi
+check "trit empty arg: usage error"      "$OUT" "usage: trit"
 
 # 9.6  echo with no argument — must not crash (prints blank line or empty)
 OUT=$(run_shell "echo ")

@@ -56,9 +56,18 @@ fn state_name(s: int) -> str {
 // Simulated process table
 // ---------------------------------------------------------------------------
 
-// pid counter
-fn next_pid(current: int) -> int {
-    return current + 1;
+// Global PID allocator: PIDs 0 (idle) and 1 (init) are taken at boot;
+// the 9-slot table caps live PIDs at 8. Never reuses a live PID and never
+// hands out a PID past the table.
+let mut NEXT_PID: int = 2;
+
+fn alloc_pid() -> int {
+    if NEXT_PID > 8 {
+        return -1;   // process table full
+    }
+    let pid = NEXT_PID;
+    NEXT_PID = NEXT_PID + 1;
+    return pid;
 }
 
 // ---------------------------------------------------------------------------
@@ -71,7 +80,12 @@ fn sys_fork(parent: PCB) -> PCB {
     print_pcb(parent);
 
     // Allocate new PCB with copy-on-write page table
-    let child_pid = next_pid(parent.pid);
+    let child_pid = alloc_pid();
+    if child_pid < 0 {
+        io::println("  SYS_FORK failed: process table full (9 slots) — EAGAIN");
+        io::println("  SYS_FORK returns -1");
+        return make_pcb(-1, -3, parent.privilege, parent.pid);
+    }
     let child = make_pcb(child_pid, 3, parent.privilege, parent.pid);
 
     io::println("  copy-on-write: child page table — read_perm=0 (CoW)");
@@ -94,10 +108,12 @@ fn sys_exec(p: PCB, image_addr: int) -> PCB {
     io::print(" image_addr=0x");
     io::println_int(image_addr);
 
-    let new_p = make_pcb(p.pid, 3, p.privilege, p.parent_pid);
-    // Set PC to image_addr (simulated)
+    // Fresh image: PC starts at image_addr, state READY
+    let new_p = PCB { pid: p.pid, state: 3, pc: image_addr, sp: p.sp,
+                      privilege: p.privilege, page_table: p.page_table,
+                      parent_pid: p.parent_pid };
     io::print("  process.pc = 0x");
-    io::println_int(image_addr);
+    io::println_int(new_p.pc);
     io::println("  process.state = READY (+3)");
     io::println("  SYS_EXEC: image loaded");
 

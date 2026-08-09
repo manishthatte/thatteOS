@@ -43,6 +43,12 @@ fn strip_html(raw: str) -> str {
 
         } elif ch == "<" {
             in_tag = 1;
+            // track <script>/<style> blocks so their contents are skipped
+            let peek9 = str_to_lower(str_slice(raw, i, i + 9));
+            if str_starts_with(peek9, "<script")  { in_script = 1; }
+            if str_starts_with(peek9, "</script") { in_script = 0; }
+            if str_starts_with(peek9, "<style")   { in_style = 1; }
+            if str_starts_with(peek9, "</style")  { in_style = 0; }
             // detect block-level tags that should produce newlines
             let peek8 = str_to_lower(str_slice(raw, i, i + 8));
             if str_starts_with(peek8, "<br") ||
@@ -59,6 +65,10 @@ fn strip_html(raw: str) -> str {
                str_starts_with(peek8, "</p>") {
                 out = str_concat(out, "\n");
             }
+            i = i + 1;
+
+        } elif in_script == 1 || in_style == 1 {
+            // inside <script>/<style>: content is code, not page text — skip
             i = i + 1;
 
         } elif ch == "&" {

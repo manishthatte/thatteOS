@@ -20,7 +20,7 @@
 //   exit     — exit shell
 
 use std::io;
-use std::str;
+// str_* helpers come from the ManiT C runtime (str is a type keyword)
 
 // ---------------------------------------------------------------------------
 // Shell state
@@ -160,6 +160,15 @@ fn cmd_dmesg() {
 }
 
 fn cmd_trit(n: int) {
+    // 9 trits can represent -9841 .. +9841 ((3^9 - 1) / 2); reject anything
+    // larger instead of silently printing a truncated, wrong string.
+    if n > 9841 || n < -9841 {
+        io::print("  trit: ");
+        io::print_int(n);
+        io::println(" out of 9-trit range (-9841 .. +9841)");
+        return;
+    }
+
     io::print("  ");
     io::print_int(n);
     io::print(" in balanced ternary: 0t");
@@ -266,24 +275,24 @@ fn cmd_clear() {
 
 // Return the substring after the first 'n' characters.
 fn args_after(cmd: str, n: int) -> str {
-    let total = str::len(cmd);
+    let total = str_len(cmd);
     if total <= n { return ""; }
-    return str::substr(cmd, n, total - n);
+    return str_substr(cmd, n, total - n);
 }
 
 // Parse the first space-separated integer from a string.
 fn parse_first_int(s: str) -> int {
-    let sp = str::find(s, " ");
-    if sp < 0 { return str::parse_int(s); }
-    return str::parse_int(str::substr(s, 0, sp));
+    let sp = str_find(s, " ");
+    if sp < 0 { return str_parse_int(s); }
+    return str_parse_int(str_substr(s, 0, sp));
 }
 
 // Parse the second space-separated integer from a string like "PID SIG".
 fn parse_second_int(s: str) -> int {
-    let sp = str::find(s, " ");
+    let sp = str_find(s, " ");
     if sp < 0 { return 0; }
-    let rest = str::substr(s, sp + 1, str::len(s) - sp - 1);
-    return str::parse_int(rest);
+    let rest = str_substr(s, sp + 1, str_len(s) - sp - 1);
+    return str_parse_int(rest);
 }
 
 // ---------------------------------------------------------------------------
@@ -321,22 +330,22 @@ fn dispatch_command(cmd: str, state: ShellState) -> ShellState {
         return ShellState { privilege: state.privilege, username: state.username,
                             pid: state.pid, running: false, cmd_count: new_count,
                             tick: state.tick };
-    } elif str::starts_with(cmd, "trit ") {
+    } elif str_starts_with(cmd, "trit ") {
         // "trit N" — convert any integer to balanced ternary
         let arg = args_after(cmd, 5);
-        cmd_trit(str::parse_int(arg));
-    } elif str::starts_with(cmd, "echo ") {
+        cmd_trit(str_parse_int(arg));
+    } elif str_starts_with(cmd, "echo ") {
         // "echo <anything>" — print argument
         let arg = args_after(cmd, 5);
         io::print("  ");
         io::println(arg);
-    } elif str::starts_with(cmd, "kill ") {
+    } elif str_starts_with(cmd, "kill ") {
         // "kill PID SIGNAL" — parse two space-separated integers
         let args = args_after(cmd, 5);
         let target_pid = parse_first_int(args);
         let signal = parse_second_int(args);
         cmd_kill(target_pid, signal);
-    } elif str::starts_with(cmd, "stat ") {
+    } elif str_starts_with(cmd, "stat ") {
         // "stat <path>" — any path
         let path = args_after(cmd, 5);
         cmd_stat(path);

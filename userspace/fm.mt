@@ -265,9 +265,13 @@ fn main() {
                 let ask  = str_concat("delete ", fm_join(cwd, name));
                 let ok   = confirm(ask);
                 if ok == 1 {
-                    fs_remove_file(fm_join(cwd, name));
-                    msg = str_concat("deleted: ", name);
-                    if selected > 0 { selected = selected - 1; }
+                    let rc = fs_delete(fm_join(cwd, name));
+                    if rc == 1 {
+                        msg = str_concat("deleted: ", name);
+                        if selected > 0 { selected = selected - 1; }
+                    } else {
+                        msg = str_concat("delete failed: ", name);
+                    }
                 }
             }
 

@@ -148,6 +148,69 @@ fn check_starvation(p: PCB) -> PCB {
 }
 
 // ---------------------------------------------------------------------------
+// age_tick: one scheduler tick has elapsed without dispatch — age the PCB
+// ---------------------------------------------------------------------------
+
+fn age_tick(p: PCB) -> PCB {
+    return PCB { pid: p.pid, state: p.state, pc: p.pc, sp: p.sp,
+                 priority: p.priority, age: p.age + 1, quantum_used: p.quantum_used };
+}
+
+// ---------------------------------------------------------------------------
+// schedule_pcb: starvation check + TBRANCH state dispatch for one PCB.
+// Returns the updated PCB (promotion, age reset, quantum accounting) so the
+// caller can write it back into the process table.
+// ---------------------------------------------------------------------------
+
+fn schedule_pcb(idx: int, p: PCB) -> PCB {
+    let primary = get_primary(p.state);
+    let p2 = check_starvation(p);
+    io::print("  PCB[");
+    io::print_int(idx);
+    io::print("] PID=");
+    io::print_int(p.pid);
+    io::print(" state=");
+    io::print(state_name(p.state));
+    io::print(" pri=");
+    io::print(priority_name(p.priority));
+    io::print(" age=");
+    io::print_int(p2.age);
+    io::print(" primary=");
+    io::println_trit(primary);
+
+    tif primary {
+        + => {
+            io::println("    [ACTIVE]");
+            if p2.quantum_used >= 3 {
+                io::print("    [QUANTUM] PID=");
+                io::print_int(p2.pid);
+                io::println(" used 3 ticks — preempted, quantum reset");
+                io::println("");
+                return PCB { pid: p2.pid, state: p2.state, pc: p2.pc, sp: p2.sp,
+                             priority: p2.priority, age: p2.age, quantum_used: 0 };
+            }
+            dispatch_active(p2);
+            io::println("");
+            // Dispatched: age resets, one quantum tick consumed
+            return PCB { pid: p2.pid, state: p2.state, pc: p2.pc, sp: p2.sp,
+                         priority: p2.priority, age: 0, quantum_used: p2.quantum_used + 1 };
+        }
+        0 => {
+            io::println("    [DORMANT]");
+            let _ = check_wakeup(p2);
+            io::println("");
+            return p2;
+        }
+        - => {
+            io::println("    [TERMINAL]");
+            reap_process(p2);
+            io::println("");
+            return p2;
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // scheduler_run: main loop — priority-first, then TBRANCH state dispatch
 // ---------------------------------------------------------------------------
 
@@ -158,7 +221,7 @@ fn scheduler_run() {
     io::println("");
 
     // Process table: 9 PCBs with varied states and priorities
-    let pcbs: [PCB] = [
+    let mut pcbs: [PCB] = [
         make_pcb(0, 3, +),   // idle, READY, HIGH
         make_pcb(1, 4, 0),   // init, EXECUTING, NORMAL
         make_pcb(2, 2, -),   // worker, YIELDED, LOW
@@ -170,32 +233,27 @@ fn scheduler_run() {
         make_pcb(8, -5, +),  // FAULTED, HIGH
     ];
 
-    // --- Pass 1: HIGH priority processes ---
-    io::println("  === HIGH priority pass ===");
+    // --- Aging: a scheduler tick elapsed for every live process ---
+    // (dispatch below resets age to 0; terminal processes do not age)
     let mut i = 0;
     while i < 9 {
         let p = pcbs[i];
-        tif p.priority {
-            + => {
-                let primary = get_primary(p.state);
-                let p2 = check_starvation(p);
-                io::print("  PCB[");
-                io::print_int(i);
-                io::print("] PID=");
-                io::print_int(p.pid);
-                io::print(" state=");
-                io::print(state_name(p.state));
-                io::print(" pri=HIGH");
-                io::print(" primary=");
-                io::println_trit(primary);
+        let pr = get_primary(p.state);
+        tif pr {
+            + => { pcbs[i] = age_tick(p); }
+            0 => { pcbs[i] = age_tick(p); }
+            - => {}
+        }
+        i = i + 1;
+    }
 
-                tif primary {
-                    + => { io::println("    [ACTIVE]"); dispatch_active(p2); }
-                    0 => { io::println("    [DORMANT]"); let _ = check_wakeup(p2); }
-                    - => { io::println("    [TERMINAL]"); reap_process(p2); }
-                }
-                io::println("");
-            }
+    // --- Pass 1: HIGH priority processes ---
+    io::println("  === HIGH priority pass ===");
+    i = 0;
+    while i < 9 {
+        let p = pcbs[i];
+        tif p.priority {
+            + => { pcbs[i] = schedule_pcb(i, p); }
             0 => {}
             - => {}
         }
@@ -209,26 +267,7 @@ fn scheduler_run() {
         let p = pcbs[i];
         tif p.priority {
             + => {}
-            0 => {
-                let primary = get_primary(p.state);
-                let p2 = check_starvation(p);
-                io::print("  PCB[");
-                io::print_int(i);
-                io::print("] PID=");
-                io::print_int(p.pid);
-                io::print(" state=");
-                io::print(state_name(p.state));
-                io::print(" pri=NORMAL");
-                io::print(" primary=");
-                io::println_trit(primary);
-
-                tif primary {
-                    + => { io::println("    [ACTIVE]"); dispatch_active(p2); }
-                    0 => { io::println("    [DORMANT]"); let _ = check_wakeup(p2); }
-                    - => { io::println("    [TERMINAL]"); reap_process(p2); }
-                }
-                io::println("");
-            }
+            0 => { pcbs[i] = schedule_pcb(i, p); }
             - => {}
         }
         i = i + 1;
@@ -242,26 +281,7 @@ fn scheduler_run() {
         tif p.priority {
             + => {}
             0 => {}
-            - => {
-                let primary = get_primary(p.state);
-                let p2 = check_starvation(p);
-                io::print("  PCB[");
-                io::print_int(i);
-                io::print("] PID=");
-                io::print_int(p.pid);
-                io::print(" state=");
-                io::print(state_name(p.state));
-                io::print(" pri=LOW");
-                io::print(" primary=");
-                io::println_trit(primary);
-
-                tif primary {
-                    + => { io::println("    [ACTIVE]"); dispatch_active(p2); }
-                    0 => { io::println("    [DORMANT]"); let _ = check_wakeup(p2); }
-                    - => { io::println("    [TERMINAL]"); reap_process(p2); }
-                }
-                io::println("");
-            }
+            - => { pcbs[i] = schedule_pcb(i, p); }
         }
         i = i + 1;
     }

@@ -192,7 +192,11 @@ fn mmu_alloc_frame(table: FrameTable) -> AllocResult {
                 f7: used,     base7: table.base7,
                 f8: table.f8, base8: table.base8 } };
     }
-    // frame 8 is last resort
+    // frame 8 is the last candidate — verify it really is free
+    if table.f8 != free {
+        io::println("[MMU] alloc_frame: no free frame found (table inconsistent)");
+        return alloc_failed(table);
+    }
     io::println("[MMU] alloc_frame: frame 8");
     return AllocResult { frame_idx: 8,
         table: FrameTable { total: table.total, free_count: table.free_count - 1,
@@ -208,6 +212,22 @@ fn mmu_alloc_frame(table: FrameTable) -> AllocResult {
 }
 
 // ---------------------------------------------------------------------------
+// mmu_frame_state: return the state trit of a frame
+// ---------------------------------------------------------------------------
+
+fn mmu_frame_state(table: FrameTable, idx: int) -> trit {
+    if idx == 0 { return table.f0; }
+    elif idx == 1 { return table.f1; }
+    elif idx == 2 { return table.f2; }
+    elif idx == 3 { return table.f3; }
+    elif idx == 4 { return table.f4; }
+    elif idx == 5 { return table.f5; }
+    elif idx == 6 { return table.f6; }
+    elif idx == 7 { return table.f7; }
+    else { return table.f8; }
+}
+
+// ---------------------------------------------------------------------------
 // mmu_free_frame: mark a frame as FREE
 // ---------------------------------------------------------------------------
 
@@ -219,6 +239,12 @@ fn mmu_free_frame(table: FrameTable, idx: int) -> FrameTable {
     }
     if idx == 0 {
         io::println("[MMU] free_frame: cannot free RESERVED frame 0");
+        return table;
+    }
+    if mmu_frame_state(table, idx) != FRAME_USED() {
+        io::print("[MMU] free_frame: frame ");
+        io::print_int(idx);
+        io::println(" is not USED — double free ignored");
         return table;
     }
     io::print("[MMU] free_frame: releasing frame ");
