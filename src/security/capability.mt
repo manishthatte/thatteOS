@@ -131,29 +131,61 @@ fn print_caps(cap: CapWord) {
 // Returns: +1=allowed, 0=inherited (resolve needed), -1=denied
 // ---------------------------------------------------------------------------
 
+// A pure predicate: the caller decides whether and how to report. `enforce`
+// below does the logging, so check_cap must not (it used to print its own
+// DENIED line, which meant every denial was reported twice).
 fn check_cap(cap: CapWord, idx: int) -> trit {
-    let v = get_cap(cap, idx);
-    tif v {
-        + => {
-            return +;
-        }
-        0 => {
-            // Inherited — needs parent resolution
-            return 0;
-        }
-        - => {
-            io::print("  [CAP] DENIED: ");
-            io::print(cap_name(idx));
-            io::print(" for PID=");
-            io::println_int(cap.pid);
-            return -;
-        }
-    }
+    return get_cap(cap, idx);
 }
 
+// ===========================================================================
+// COMPOSITION RULE (normative)
+// ===========================================================================
+//
+// `resolve` and `attenuate` do NOT commute, so the order they are applied in
+// is part of the model, not an implementation detail. With a parent trit of
+// 0 (INHERITED) and a child requesting + (GRANTED):
+//
+//   attenuate first: attenuate_trit(0, +) = 0, then resolve_cap(0, 0) = -
+//                    => DENIED
+//   resolve first:   parent resolves to + against a granting grandparent,
+//                    then attenuate_trit(+, +) = +
+//                    => GRANTED
+//
+// Same three processes, opposite outcome. The rule that removes the ambiguity:
+//
+//   INVARIANT: a CapWord used as a PARENT must already be resolved — it must
+//   contain no INHERITED (0) trit. Resolution walks the process tree from the
+//   root downward, so by the time a process spawns a child its own word is
+//   always concrete.
+//
+// `is_resolved` tests the invariant and `resolve_root` establishes it for a
+// process with no parent (INHERITED becomes DENIED — fail closed). With a
+// resolved parent, attenuate_trit's 0-parent case cannot arise and the two
+// operations compose in either order.
+//
 // ---------------------------------------------------------------------------
 // resolve_inherited: resolve INHERITED(0) using parent capabilities
 // ---------------------------------------------------------------------------
+
+// True when `cap` contains no INHERITED trit, i.e. it is safe to use as a
+// parent word (see COMPOSITION RULE above).
+fn is_resolved(cap: CapWord) -> bool {
+    let mut i = 0;
+    while i < 9 {
+        if get_cap(cap, i) == 0 { return false; }
+        i = i + 1;
+    }
+    return true;
+}
+
+// Resolve a root process's word: with no parent, INHERITED means DENIED.
+// Idempotent, and always yields a word satisfying `is_resolved`.
+fn resolve_root(cap: CapWord) -> CapWord {
+    let deny = CapWord { pid: cap.pid,
+        c0: -, c1: -, c2: -, c3: -, c4: -, c5: -, c6: -, c7: -, c8: - };
+    return resolve_all(cap, deny);
+}
 
 fn resolve_cap(child_cap: trit, parent_cap: trit) -> trit {
     tif child_cap {
@@ -190,6 +222,9 @@ fn resolve_all(child: CapWord, parent: CapWord) -> CapWord {
 // Rule: child can never have MORE than parent
 // ---------------------------------------------------------------------------
 
+// Precondition: `parent_cap` comes from a resolved word (see COMPOSITION
+// RULE). The 0-parent arm below therefore cannot arise in a well-formed call;
+// it stays as a fail-closed fallback rather than silently granting.
 fn attenuate_trit(parent_cap: trit, child_request: trit) -> trit {
     tif parent_cap {
         + => {
@@ -197,12 +232,10 @@ fn attenuate_trit(parent_cap: trit, child_request: trit) -> trit {
             return child_request;
         }
         0 => {
-            // Parent inherited: child can inherit or deny, not grant
-            tif child_request {
-                + => return 0,   // Cannot grant what parent only inherits
-                0 => return 0,
-                - => return -,
-            }
+            // Unresolved parent — the invariant was violated. Deny rather
+            // than propagate an INHERITED that would resolve differently
+            // depending on when it is resolved.
+            return -;
         }
         - => {
             // Parent denied: child must be denied
@@ -211,7 +244,14 @@ fn attenuate_trit(parent_cap: trit, child_request: trit) -> trit {
     }
 }
 
-fn attenuate(parent: CapWord, child_request: CapWord) -> CapWord {
+// Restrict a child's requested capabilities by its parent's.
+//
+// `parent` must be resolved (COMPOSITION RULE). Rather than trust the caller,
+// normalise here: resolve_root leaves an already-resolved word untouched (it
+// only rewrites INHERITED trits), so this is a no-op in the well-formed case
+// and makes the operation total in the ill-formed one.
+fn attenuate(parent_in: CapWord, child_request: CapWord) -> CapWord {
+    let parent = resolve_root(parent_in);
     return CapWord {
         pid: child_request.pid,
         c0: attenuate_trit(parent.c0, child_request.c0),
@@ -329,6 +369,21 @@ fn main() {
     let resolved = resolve_all(sandbox, ucap);
     io::println("Resolved capabilities:");
     print_caps(resolved);
+    io::println("");
+
+    // --- Composition order (see COMPOSITION RULE) ---
+    io::println("--- Composition Order ---");
+    io::print("USER parent is resolved (no INHERITED trit): ");
+    io::println_bool3(is_resolved(ucap));
+    io::print("SANDBOXED word is resolved: ");
+    io::println_bool3(is_resolved(sandbox));
+    io::println("Resolving the sandbox word at the root denies its INHERITED trits:");
+    let rooted = resolve_root(sandbox);
+    io::print("  resolved: ");
+    io::println_bool3(is_resolved(rooted));
+    io::println("Canonical order — resolve the parent, then attenuate the child:");
+    let grandchild = attenuate(resolved, kernel_caps(5));
+    print_caps(grandchild);
     io::println("");
 
     io::println("=== Capability claims verified ===");
