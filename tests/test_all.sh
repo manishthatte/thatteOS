@@ -27,11 +27,21 @@ FAIL=0
 
 # ── helpers ─────────────────────────────────────────────────────────────────
 
+# Substring test done in-shell, NOT via `echo "$output" | grep -qF`.
+# `grep -q` exits the moment it matches, so with a large capture the writing
+# `echo` is left with a closed pipe and dies of SIGPIPE; `set -o pipefail`
+# then makes the whole pipeline exit 141 and the check reports a spurious
+# FAIL even though the pattern is present. That is a race on how much of the
+# output has been written when grep bails, which is why it only ever bit the
+# one test with a big capture whose pattern matches early ("cat reads
+# LICENSE": 37 KB of output, matched at line 65 of 730) and why it showed up
+# far more often on CI than locally. `[[ == *"$pattern"* ]]` is an exact
+# literal substring match with no subprocess and no pipe.
 check() {
     local label="$1"
     local output="$2"
     local pattern="$3"
-    if echo "$output" | grep -qF -- "$pattern"; then
+    if [[ "$output" == *"$pattern"* ]]; then
         echo "  PASS  $label"
         PASS=$((PASS + 1))
     else
@@ -103,7 +113,7 @@ echo "--- [2] filesystem commands ---"
 OUT=$(run_shell "ls")
 # Boot banner contains "fault" in IDT description — so check ls output
 # has at least one recognisable entry from the THATTE directory
-if echo "$OUT" | grep -qF "thatteos"; then
+if [[ "$OUT" == *"thatteos"* ]]; then
     echo "  PASS  ls shows directory entries"
     PASS=$((PASS + 1))
 else
