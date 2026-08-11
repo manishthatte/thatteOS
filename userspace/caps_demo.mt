@@ -1,4 +1,4 @@
-// userspace/caps_demo.mt — THATTEOS CapWord enforcement demo
+// userspace/caps_demo.mt — thatteOS CapWord enforcement demo
 //
 // Demonstrates the 9-trit capability word system:
 //   GRANTED(+1)   INHERITED(0)   DENIED(-1)
@@ -138,7 +138,7 @@ fn enforce(caps: int, cap_idx: int, syscall: str) {
 }
 
 fn main() {
-    io::println("=== THATTEOS caps_demo — 9-trit CapWord system ===");
+    io::println("=== thatteOS caps_demo — 9-trit CapWord system ===");
     io::println("");
 
     let k = kernel_caps();

@@ -1,15 +1,15 @@
-THATTEOS SYSTEM CALL BOUNDARY NOTE
+thatteOS SYSTEM CALL BOUNDARY NOTE
 
 Copyright © 2026 Manish Jagdish Thatte
 
-NOTE: The AGPLv3 license of the THATTEOS kernel does *not* cover user
+NOTE: The AGPLv3 license of the thatteOS kernel does *not* cover user
 programs that use kernel services through normal system calls, message-
-passing IPC, or the THATTEOS ABI — this is considered normal use of the
+passing IPC, or the thatteOS ABI — this is considered normal use of the
 kernel, and does NOT make such programs "derivative works" or "works based
 on" the kernel.
 
-User-space programs written to run on THATTEOS (or on the T3ISA emulator
-hosting THATTEOS) may therefore be distributed under any license of your
+User-space programs written to run on thatteOS (or on the T3ISA emulator
+hosting thatteOS) may therefore be distributed under any license of your
 choice.
 
 This note applies only to the system-call/ABI boundary. Code that is

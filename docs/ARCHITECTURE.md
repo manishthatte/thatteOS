@@ -1,9 +1,9 @@
-# The THATTEOS Handbook — Architecture
+# The thatteOS Handbook — Architecture
 
 *What every subsystem does, why it thinks in threes, and where it lives.*
 
-THATTEOS is a microkernel for a balanced ternary computing fabric. Where a
-conventional kernel manages a CPU clocked by a crystal, THATTEOS manages a
+thatteOS is a microkernel for a balanced ternary computing fabric. Where a
+conventional kernel manages a CPU clocked by a crystal, thatteOS manages a
 fabric of ternary devices coordinated by photon schedules: addresses are
 trits, privilege is one trit deep, and "permission AND request" is a single
 hardware gate. In hosted mode all of this runs as a native Linux process —
@@ -100,15 +100,15 @@ tables — branching factor 3, one trit consumed per level.
 `thatteos.mt` (repo root) is the hosted entry point: it initialises the
 subsystems in dependency order — memory, interrupts, timer, TritFS, IPC,
 security — starts `init`, drops privilege, and hands you the shell.
-`build.sh` compiles it via manitc's LLVM backend and links the ManiT C
+`build.sh` compiles it via maniTC's LLVM backend and links the ManiT C
 runtime.
 
 ## Where to go next
 
 - Run it: [GETTING_STARTED.md](../GETTING_STARTED.md)
-- The language it's written in: [manitc](https://github.com/manishthatte/manitc)
-  and its [language reference](https://github.com/manishthatte/manitc/blob/main/docs/language-reference.md)
-- The instruction set underneath: [T3ISA reference](https://github.com/manishthatte/manitc/blob/main/docs/t3isa-reference.md)
+- The language it's written in: [maniTC](https://github.com/manishthatte/maniTC)
+  and its [language reference](https://github.com/manishthatte/maniTC/blob/main/docs/language-reference.md)
+- The instruction set underneath: [T3ISA reference](https://github.com/manishthatte/maniTC/blob/main/docs/t3isa-reference.md)
 - Contribute a subsystem: [CONTRIBUTING.md](../CONTRIBUTING.md) — open a
   Discussion first for anything structural
 

@@ -6,7 +6,7 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
-  # THATTEOS is written in ManiT, so a compiler change can break it without
+  # thatteOS is written in ManiT, so a compiler change can break it without
   # anything in this repository changing. Rebuild weekly against manitc main.
   schedule:
     - cron: '17 4 * * 1'

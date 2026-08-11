@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for your interest in THATTEOS. Contributions are welcome — bug
+Thank you for your interest in thatteOS. Contributions are welcome — bug
 reports, kernel modules, userspace programs, docs, tests.
 
 ## Ground rules
@@ -16,15 +16,15 @@ reports, kernel modules, userspace programs, docs, tests.
 
 2. **License.** The kernel is AGPL-3.0 with the
    [syscall boundary note](COPYING.SYSCALL-NOTE): programs that run ON
-   THATTEOS are yours under any license; kernel code itself is copyleft.
+   thatteOS are yours under any license; kernel code itself is copyleft.
 
-3. **Think in threes.** THATTEOS is balanced-ternary from first principles:
+3. **Think in threes.** thatteOS is balanced-ternary from first principles:
    three privilege rings, three-valued logic, trit addressing. PRs that
    bolt binary idioms onto the kernel will be asked to re-think — open a
    GitHub Discussion first for anything structural.
 
 4. **Language.** Kernel and userspace are written in ManiT — see the
-   [manitc](https://github.com/manishthatte/manitc) repo for the language
+   [maniTC](https://github.com/manishthatte/maniTC) repo for the language
    reference and compiler.
 
 5. **Tests.** Run `bash tests/test_all.sh` before submitting; new

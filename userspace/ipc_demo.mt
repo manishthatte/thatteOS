@@ -1,6 +1,6 @@
-// userspace/ipc_demo.mt — THATTEOS IPC message passing demo
+// userspace/ipc_demo.mt — thatteOS IPC message passing demo
 //
-// Simulates the THATTEOS signed-integer IPC protocol:
+// Simulates the thatteOS signed-integer IPC protocol:
 //   positive message IDs  = resource requests
 //   zero message ID       = heartbeat / null op
 //   negative message IDs  = error notifications
@@ -56,7 +56,7 @@ fn dispatch_msg(id: int, payload: int) {
 }
 
 fn main() {
-    io::println("=== THATTEOS ipc_demo — signed-integer message passing ===");
+    io::println("=== thatteOS ipc_demo — signed-integer message passing ===");
     io::println("");
     io::println("  Protocol: sign(msg_id) determines dispatch path");
     io::println("    (+) positive IDs → resource requests → service layer");
@@ -80,7 +80,7 @@ fn main() {
     io::println("  zero messages    (heartbeats):  1  (ID 0)");
     io::println("  negative messages (errors):     4  (IDs -1..-4)");
     io::println("");
-    io::println("  THATTEOS IPC guarantees:");
+    io::println("  thatteOS IPC guarantees:");
     io::println("  • message IDs are signed integers — sign encodes semantics");
     io::println("  • TBRANCH on sign(id) gives O(1) three-way dispatch");
     io::println("  • negative IDs never confused with positive requests");

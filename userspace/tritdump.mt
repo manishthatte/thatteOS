@@ -1,4 +1,4 @@
-// userspace/tritdump.mt — THATTEOS balanced ternary file dump
+// userspace/tritdump.mt — thatteOS balanced ternary file dump
 //
 // Reads a file and prints each byte as:
 //   offset(decimal)  hex  balanced-ternary  ASCII
@@ -71,7 +71,7 @@ fn is_printable(n: int) -> int {
 }
 
 fn main() {
-    io::println("=== THATTEOS tritdump ===");
+    io::println("=== thatteOS tritdump ===");
     io::print("file> ");
     let raw = io::read_line();
     let path = str_trim(raw);

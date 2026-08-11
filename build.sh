@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# build.sh — build the THATTEOS interactive shell binary (hosted mode)
+# build.sh — build the thatteOS interactive shell binary (hosted mode)
 #
-# Prerequisite: the manitc compiler, built from the sibling repository:
-#     git clone https://github.com/manishthatte/manitc
-#     cd manitc && cargo build --release
+# Prerequisite: the maniTC compiler, built from the sibling repository:
+#     git clone https://github.com/manishthatte/maniTC
+#     cd maniTC && cargo build --release
 #
 # Usage (from this repo's root):
 #     bash build.sh
@@ -18,13 +18,31 @@
 set -e
 cd "$(dirname "$0")"
 
-MANITC="${MANITC:-../manitc/target/release/manitc}"
 CLANG="${CLANG:-clang-19}"
-RUNTIME_SRC="${RUNTIME_SRC:-../manitc/runtime/manit_runtime.c}"
 
-if [ ! -x "$MANITC" ]; then
-    echo "error: manitc not found at $MANITC" >&2
-    echo "build it first:  git clone https://github.com/manishthatte/manitc && cd manitc && cargo build --release" >&2
+# The sibling checkout may be called either maniTC (the repository name, which
+# is what `git clone` produces) or manitc (the crate/binary name, which is what
+# older checkouts and some local setups use). Linux filenames are
+# case-sensitive, so hardcoding one spelling breaks the other. Try both, and
+# let MANITC/RUNTIME_SRC override entirely.
+if [ -z "$MANITC" ]; then
+    for d in ../maniTC ../manitc; do
+        if [ -x "$d/target/release/manitc" ]; then
+            MANITC="$d/target/release/manitc"
+            SIBLING="$d"
+            break
+        fi
+    done
+fi
+if [ -z "$RUNTIME_SRC" ] && [ -n "$SIBLING" ]; then
+    RUNTIME_SRC="$SIBLING/runtime/manit_runtime.c"
+fi
+RUNTIME_SRC="${RUNTIME_SRC:-../maniTC/runtime/manit_runtime.c}"
+
+if [ -z "$MANITC" ] || [ ! -x "$MANITC" ]; then
+    echo "error: the manitc binary was not found in ../maniTC or ../manitc" >&2
+    echo "build it first:  git clone https://github.com/manishthatte/maniTC && cd maniTC && cargo build --release" >&2
+    echo "or point at it:  MANITC=/path/to/manitc bash build.sh" >&2
     exit 1
 fi
 

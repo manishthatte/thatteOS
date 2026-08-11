@@ -1,20 +1,20 @@
-# Getting Started with THATTEOS
+# Getting Started with thatteOS
 
 *From clone to a running ternary operating system in five minutes.*
 
-THATTEOS is a microkernel operating system written entirely in
-[ManiT](https://github.com/manishthatte/manitc). In **hosted mode** it
-compiles to a native Linux binary through the manitc LLVM backend — the
+thatteOS is a microkernel operating system written entirely in
+[ManiT](https://github.com/manishthatte/maniTC). In **hosted mode** it
+compiles to a native Linux binary through the maniTC LLVM backend — the
 kernel's subsystems (scheduler, virtual memory, IPC, three-ring security,
 TritFS) run as a self-contained system with an interactive shell.
 
 ## 0. Prerequisites
 
-- The **manitc** compiler, built in a sibling directory:
+- The **maniTC** compiler, built in a sibling directory:
 
   ```sh
-  git clone https://github.com/manishthatte/manitc
-  cd manitc && cargo build --release && cd ..
+  git clone https://github.com/manishthatte/maniTC
+  cd maniTC && cargo build --release && cd ..
   ```
 
 - **clang** (scripts default to `clang-19`; override with `CLANG=clang-XX`)
@@ -24,13 +24,13 @@ TritFS) run as a self-contained system with an interactive shell.
 ## 1. Build and enter the shell
 
 ```sh
-git clone https://github.com/manishthatte/thatteos
-cd thatteos
+git clone https://github.com/manishthatte/thatteOS
+cd thatteOS
 bash build.sh
 ./thatteos
 ```
 
-You are now in the THATTEOS shell. Try:
+You are now in the thatteOS shell. Try:
 
 ```
 help          list all commands
@@ -73,7 +73,7 @@ Demos worth reading before running:
 bash tests/test_all.sh
 ```
 
-## 4. Write your own THATTEOS program
+## 4. Write your own thatteOS program
 
 Create `userspace/hi.mt`:
 
@@ -81,25 +81,25 @@ Create `userspace/hi.mt`:
 use std::io;
 
 fn main() {
-    io::println("my first THATTEOS program");
+    io::println("my first thatteOS program");
 }
 ```
 
-Compile it the same way `userspace/build.sh` does (manitc → LLVM IR → link
+Compile it the same way `userspace/build.sh` does (maniTC → LLVM IR → link
 with the ManiT runtime), or add `hi` to the `PROGRAMS` list in
 `userspace/build.sh` and rebuild.
 
-Programs that run on THATTEOS are **yours under any license** — see
+Programs that run on thatteOS are **yours under any license** — see
 [COPYING.SYSCALL-NOTE](COPYING.SYSCALL-NOTE).
 
 ## 5. Understand what you're running
 
-Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the THATTEOS handbook:
+Read [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — the thatteOS handbook:
 every kernel subsystem, what it does, and where it lives in `src/`.
 
 ## 6. Questions?
 
-Open a [GitHub Discussion](https://github.com/manishthatte/thatteos/discussions).
+Open a [GitHub Discussion](https://github.com/manishthatte/thatteOS/discussions).
 Contributions welcome — read [CONTRIBUTING.md](CONTRIBUTING.md) (one-line CLA
 required).
 

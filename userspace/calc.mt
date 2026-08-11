@@ -1,4 +1,4 @@
-// userspace/calc.mt — THATTEOS ternary calculator
+// userspace/calc.mt — thatteOS ternary calculator
 //
 // Standalone userspace program.  Interactive: enter "<a> <op> <b>"
 // (infix) or "<op> <a> <b>" (prefix) — both forms are accepted.
@@ -95,7 +95,7 @@ fn power(base: int, exp: int) -> int {
 }
 
 fn main() {
-    io::println("=== THATTEOS calc  —  balanced ternary arithmetic ===");
+    io::println("=== thatteOS calc  —  balanced ternary arithmetic ===");
     io::println("  ops: + - * / % ** abs neg");
     io::println("  forms: <a> <op> <b>   or   <op> <a> <b>");
     io::println("  type 'quit' to exit");

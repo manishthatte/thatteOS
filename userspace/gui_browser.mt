@@ -1,4 +1,4 @@
-// userspace/gui_browser.mt — THATTEOS Graphical Text Browser
+// userspace/gui_browser.mt — thatteOS Graphical Text Browser
 //
 // SDL2-based web browser: fetches HTTP/HTTPS pages via libcurl,
 // strips HTML tags, and renders as scrollable text.
@@ -227,7 +227,7 @@ fn draw_frame(url_buf: str, content: str, total_lines: int, scroll: int,
     col_title_bg();
     gui_fill_rect(0, 0, ww, TITLE_H());
     gui_set_color(80, 130, 210, 255);
-    gui_draw_text_lg("THATTEOS browser", MARGIN(), 6);
+    gui_draw_text_lg("thatteOS browser", MARGIN(), 6);
 
     // address bar row
     let addr_y = TITLE_H();
@@ -328,7 +328,7 @@ fn ensure_scheme(url: str) -> str {
 // ── main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
-    gui_init(1000, 680, "THATTEOS Browser");
+    gui_init(1000, 680, "thatteOS Browser");
 
     let mut url_buf      = "";
     let mut content      = "";

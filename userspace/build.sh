@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# thatteos/userspace/build.sh — compile all THATTEOS userspace programs
+# thatteos/userspace/build.sh — compile all thatteOS userspace programs
 #
 # Usage (from the thatteos repo root):  bash userspace/build.sh
 #

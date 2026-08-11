@@ -1,4 +1,4 @@
-// userspace/fm.mt — THATTEOS File Manager
+// userspace/fm.mt — thatteOS File Manager
 //
 // Full-screen terminal file manager.
 // Uses ANSI escape codes for rendering; raw-mode keyboard for navigation.
@@ -106,7 +106,7 @@ fn draw_screen(path: str, count: int, selected: int,
     // title bar
     io_move_cursor(1, 1);
     io_set_bold();
-    raw_print(trunc(pad_right(str_concat(" THATTEOS fm  ", path), cols), cols));
+    raw_print(trunc(pad_right(str_concat(" thatteOS fm  ", path), cols), cols));
     io_reset_attr();
 
     // file listing rows

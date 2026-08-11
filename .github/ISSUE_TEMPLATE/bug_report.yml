@@ -1,5 +1,5 @@
 name: Bug report
-description: Something THATTEOS gets wrong
+description: Something thatteOS gets wrong
 labels: [bug]
 body:
   - type: textarea
@@ -39,7 +39,7 @@ body:
     id: version
     attributes:
       label: Build details
-      description: THATTEOS commit, the manitc commit you built it with, and your OS.
+      description: thatteOS commit, the manitc commit you built it with, and your OS.
       render: shell
     validations:
       required: true

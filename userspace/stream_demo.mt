@@ -1,4 +1,4 @@
-// userspace/stream_demo.mt — THATTEOS trit stream IPC demonstration
+// userspace/stream_demo.mt — thatteOS trit stream IPC demonstration
 //
 // Demonstrates zero-copy trit stream communication between two
 // simulated processes via physical SWCNT channels.
@@ -160,7 +160,7 @@ fn stream_close(s: TritStream) -> TritStream {
 // ---------------------------------------------------------------------------
 
 fn main() {
-    io::println("=== THATTEOS stream_demo — Zero-Copy Trit Stream IPC ===");
+    io::println("=== thatteOS stream_demo — Zero-Copy Trit Stream IPC ===");
     io::println("");
     io::println("  The sender's output current IS the receiver's input current");
     io::println("  on the same physical SWCNT. No buffer, no copy, no serialization.");
@@ -233,7 +233,7 @@ fn main() {
     io::println("    sender buffer -> kernel buffer -> receiver buffer");
     io::println("    Two copies, kernel overhead, cache pollution");
     io::println("");
-    io::println("  THATTEOS trit stream IPC:");
+    io::println("  thatteOS trit stream IPC:");
     io::println("    sender terminal -> [SWCNT ballistic conductor] -> receiver terminal");
     io::println("    Zero copies. One current. Two endpoints.");
     io::println("    The sender current IS the receiver current.");

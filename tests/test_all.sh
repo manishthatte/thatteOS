@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# thatteos/tests/test_all.sh — THATTEOS shell + userspace regression tests
+# thatteos/tests/test_all.sh — thatteOS shell + userspace regression tests
 #
 # Usage (from the thatteos repo root):  bash tests/test_all.sh
 #
@@ -60,7 +60,7 @@ run_shell() {
 
 # ── build check ──────────────────────────────────────────────────────────────
 
-echo "=== THATTEOS test_all.sh ==="
+echo "=== thatteOS test_all.sh ==="
 echo ""
 echo "--- pre-flight ---"
 

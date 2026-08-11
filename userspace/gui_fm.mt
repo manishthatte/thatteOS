@@ -1,4 +1,4 @@
-// userspace/gui_fm.mt — THATTEOS Graphical File Manager
+// userspace/gui_fm.mt — thatteOS Graphical File Manager
 //
 // SDL2-based file manager with mouse and keyboard navigation.
 //
@@ -171,7 +171,7 @@ fn draw_frame(cwd: str, count: int, selected: int, offset: int,
     col_title();
     gui_fill_rect(0, 0, ww, TITLE_H());
     gui_set_color(80, 120, 200, 255);
-    gui_draw_text_lg("THATTEOS fm", MARGIN(), 6);
+    gui_draw_text_lg("thatteOS fm", MARGIN(), 6);
     col_file();
     gui_draw_text(cwd, MARGIN() + 160, (TITLE_H() - fh) / 2 + 2);
 
@@ -267,7 +267,7 @@ fn draw_frame(cwd: str, count: int, selected: int, offset: int,
 // ── main ─────────────────────────────────────────────────────────────────────
 
 fn main() {
-    gui_init(900, 600, "THATTEOS File Manager");
+    gui_init(900, 600, "thatteOS File Manager");
 
     let mut cwd      = ".";
     let mut selected = 0;

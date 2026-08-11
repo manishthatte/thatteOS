@@ -1,4 +1,4 @@
-// userspace/editor.mt — THATTEOS TUI Text Editor
+// userspace/editor.mt — thatteOS TUI Text Editor
 //
 // A nano-style terminal text editor.
 //
@@ -161,7 +161,7 @@ fn render_status(path: str, total: int, row: int, col: int,
     let pos   = str_concat(" L", str_concat(str_from_int(row + 1),
                 str_concat("/", str_concat(str_from_int(total),
                 str_concat(" C", str_from_int(col + 1))))));
-    let left  = str_concat(" THATTEOS editor — ", str_concat(fname, dirt));
+    let left  = str_concat(" thatteOS editor — ", str_concat(fname, dirt));
     let gap_n = cols - str_len(left) - str_len(pos);
     let mut gap = "";
     let mut g = 0;

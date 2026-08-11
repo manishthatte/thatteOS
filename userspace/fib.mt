@@ -45,7 +45,7 @@ fn pad_left_int(n: int, width: int) -> str {
 }
 
 fn main() {
-    io::println("=== THATTEOS fib — Fibonacci in balanced ternary ===");
+    io::println("=== thatteOS fib — Fibonacci in balanced ternary ===");
     io::println("");
     io::print("  how many terms? (max 40)> ");
     let raw = io::read_line();

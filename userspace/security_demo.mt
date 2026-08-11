@@ -1,4 +1,4 @@
-// userspace/security_demo.mt — THATTEOS security model demonstration
+// userspace/security_demo.mt — thatteOS security model demonstration
 //
 // A comprehensive demo of the three-ring security model:
 //   +1 = KERNEL   — full access, all permissions
@@ -199,7 +199,7 @@ fn log_event(seq: int, event: str) {
 // ---------------------------------------------------------------------------
 
 fn main() {
-    io::println("=== THATTEOS security_demo — Three-Ring Security Model ===");
+    io::println("=== thatteOS security_demo — Three-Ring Security Model ===");
     io::println("");
     io::println("  Three rings of privilege (balanced ternary):");
     io::println("    +1 = KERNEL  — full access, hardware substrate VDD rail");

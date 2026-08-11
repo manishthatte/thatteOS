@@ -1,4 +1,4 @@
-// userspace/browser.mt — THATTEOS Text Web Browser
+// userspace/browser.mt — thatteOS Text Web Browser
 //
 // Fetches HTTP/HTTPS pages via libcurl and renders them as readable text
 // in the terminal.  Supports keyboard paging and URL history.
@@ -271,7 +271,7 @@ fn print_history(hist: str) {
 // ── main ────────────────────────────────────────────────────────────────────
 
 fn main() {
-    io::println("=== THATTEOS browser — text web browser ===");
+    io::println("=== thatteOS browser — text web browser ===");
     io::println("  HTTP/HTTPS via libcurl.  Type a URL or 'quit'.");
     io::println("  Commands: <url>  back  history  quit");
     io::println("");

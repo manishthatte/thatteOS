@@ -21,7 +21,7 @@ body:
     id: proposal
     attributes:
       label: Proposed change
-      description: What you would like instead. THATTEOS is balanced ternary from first principles — three-ring privilege, trit addresses, photon-scheduled clock. Proposals that assume a binary machine underneath are unlikely to fit.
+      description: What you would like instead. thatteOS is balanced ternary from first principles — three-ring privilege, trit addresses, photon-scheduled clock. Proposals that assume a binary machine underneath are unlikely to fit.
     validations:
       required: true
 

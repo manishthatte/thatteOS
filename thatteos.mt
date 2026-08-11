@@ -1,9 +1,9 @@
-// thatteos/thatteos.mt — THATTEOS Interactive Shell (Target A: Hosted on Linux)
+// thatteos/thatteos.mt — thatteOS Interactive Shell (Target A: Hosted on Linux)
 // ============================================================================
 // THATTE-OS  v0.3.0  —  Balanced Ternary Microkernel
 //
 // A real interactive OS shell running on Linux/x86-64.
-// Demonstrates the complete THATTEOS architecture:
+// Demonstrates the complete thatteOS architecture:
 //
 //   Privilege:  KERNEL(+1) / SERVICE(0) / USER(-1)
 //   IDT:        27 vectors, priority HIGH(+)/MEDIUM(0)/LOW(-)

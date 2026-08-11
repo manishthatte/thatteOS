@@ -1,7 +1,7 @@
-// userspace/sysinfo.mt — THATTEOS system information utility
+// userspace/sysinfo.mt — thatteOS system information utility
 //
 // Displays comprehensive system information:
-//   - THATTEOS version and build info
+//   - thatteOS version and build info
 //   - Memory layout (27-trit address space)
 //   - Process table status
 //   - TritFS statistics
@@ -18,12 +18,12 @@ use std::io;
 // Version and build info
 // ---------------------------------------------------------------------------
 
-fn os_name()    -> str { return "THATTEOS"; }
+fn os_name()    -> str { return "thatteOS"; }
 fn os_version() -> str { return "0.1.0"; }
 fn os_build()   -> str { return "2026.08.08-t3isa"; }
 fn os_arch()    -> str { return "T3ISA (27-trit balanced ternary)"; }
 fn os_author()  -> str { return "Manish Jagdish Thatte"; }
-fn os_kernel()  -> str { return "THATTEOS microkernel (ManiT)"; }
+fn os_kernel()  -> str { return "thatteOS microkernel (ManiT)"; }
 
 // ---------------------------------------------------------------------------
 // Memory layout constants (27-trit address space)
@@ -137,7 +137,7 @@ fn user_cap_val(i: int) -> int {
 // ---------------------------------------------------------------------------
 
 fn main() {
-    io::println("=== sysinfo — THATTEOS System Information ===");
+    io::println("=== sysinfo — thatteOS System Information ===");
     io::println("");
 
     // =======================================================================
