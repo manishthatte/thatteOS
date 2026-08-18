@@ -1,0 +1,31 @@
+cff-version: 1.2.0
+title: "thatteOS: a microkernel operating system written in ManiT, a balanced-ternary language"
+message: If you use this software, please cite it as below.
+type: software
+authors:
+  - family-names: Thatte
+    given-names: Manish Jagdish
+    orcid: "https://orcid.org/0009-0003-8050-1242"
+    affiliation: maniTLab, Nashik, Maharashtra, India
+    email: manish@manitlab.org
+identifiers:
+  - type: doi
+    value: 10.5281/zenodo.21894914
+    description: Concept DOI, resolving to the latest version
+repository-code: "https://github.com/manishthatte/thatteOS"
+url: "https://www.manitlab.org"
+abstract: >-
+  A microkernel operating system written entirely in ManiT, a
+  systems language whose native number system is balanced
+  ternary. Privilege is one trit deep, virtual memory uses
+  trit-trie page tables, and the kernel schedules a
+  photonic-ternary fabric the way a conventional kernel
+  schedules a processor.
+keywords:
+  - balanced ternary
+  - operating system
+  - microkernel
+  - capability security
+  - ManiT
+license: AGPL-3.0-or-later
+version: 0.1.0

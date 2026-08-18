@@ -1,0 +1,47 @@
+{
+  "title": "thatteOS: a microkernel operating system written in ManiT, a balanced-ternary language",
+  "version": "0.1.0",
+  "upload_type": "software",
+  "license": "AGPL-3.0-or-later",
+  "access_right": "open",
+  "language": "eng",
+  "creators": [
+    {
+      "name": "Thatte, Manish Jagdish",
+      "affiliation": "maniTLab, Nashik, Maharashtra, India",
+      "orcid": "0009-0003-8050-1242"
+    }
+  ],
+  "description": "<p><strong>thatteOS</strong> is a microkernel operating system written entirely in ManiT, a systems language whose native number system is balanced ternary. It builds and runs on Linux today in hosted mode, by way of the maniTC compiler's LLVM backend.</p><p>Designing an operating system around a three-valued machine word changes its structure rather than its surface. Privilege is one trit deep, so three rings fall out of the number system itself. Virtual memory uses trit-trie page tables, a radix-3 walk in place of the usual radix-512. The kernel schedules a photonic-ternary computing fabric in the way a conventional kernel schedules a processor, with capability security built on the schedule.</p><p>Includes a scheduler, message-passing IPC, trit-stream channels, a TTY driver, an interactive shell, and a small userspace.</p><p>Distributed under AGPL-3.0-or-later with a syscall-boundary note: user programs invoking thatteOS system calls are not derivative works. A commercial licence is available.</p>",
+  "keywords": [
+    "balanced ternary",
+    "ternary computing",
+    "operating system",
+    "microkernel",
+    "capability security",
+    "ManiT",
+    "trit-trie",
+    "post-CMOS",
+    "unconventional computing"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/manishthatte/thatteOS",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "10.5281/zenodo.21894912",
+      "relation": "requires",
+      "resource_type": "software",
+      "scheme": "doi"
+    },
+    {
+      "identifier": "10.5281/zenodo.21894460",
+      "relation": "isDocumentedBy",
+      "resource_type": "publication-article",
+      "scheme": "doi"
+    }
+  ]
+}
