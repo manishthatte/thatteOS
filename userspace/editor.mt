@@ -158,9 +158,9 @@ fn render_status(path: str, total: int, row: int, col: int,
     io_set_reverse();
     let fname = if str_len(path) == 0 { "[new file]" } else { path };
     let dirt  = if dirty == 1 { " [+]" } else { "" };
-    let pos   = str_concat(" L", str_concat(str_from_int(row + 1),
-                str_concat("/", str_concat(str_from_int(total),
-                str_concat(" C", str_from_int(col + 1))))));
+    let pos   = str_concat(" L", str_concat(str::from_int(row + 1),
+                str_concat("/", str_concat(str::from_int(total),
+                str_concat(" C", str::from_int(col + 1))))));
     let left  = str_concat(" thatteOS editor — ", str_concat(fname, dirt));
     let gap_n = cols - str_len(left) - str_len(pos);
     let mut gap = "";
@@ -289,7 +289,7 @@ fn main() {
                 }
 
             } elif key >= 32 && key < 127 {
-                // Build char string from keycode — use str_from_int trick via runtime
+                // Build char string from keycode — use str::from_int trick via runtime
                 // str_from_char takes i8; we build a single-byte string manually
                 let ch_s = str_slice("                                                  ",
                                      0, 1);   // placeholder space, will be replaced below

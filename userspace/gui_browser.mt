@@ -61,31 +61,31 @@ fn strip_html(raw: str) -> str {
 
         } elif ch == "<" {
             in_tag = 1;
-            let peek8 = str_to_lower(str_slice(raw, i, i + 8));
-            if str_starts_with(peek8, "<br")  ||
-               str_starts_with(peek8, "<p")   ||
-               str_starts_with(peek8, "<tr")  ||
-               str_starts_with(peek8, "<li")  ||
-               str_starts_with(peek8, "<h1")  ||
-               str_starts_with(peek8, "<h2")  ||
-               str_starts_with(peek8, "<h3")  ||
-               str_starts_with(peek8, "<h4")  ||
-               str_starts_with(peek8, "<h5")  ||
-               str_starts_with(peek8, "<h6")  ||
-               str_starts_with(peek8, "</div") ||
-               str_starts_with(peek8, "</p>") {
+            let peek8 = str::to_lower(str_slice(raw, i, i + 8));
+            if str::starts_with(peek8, "<br")  ||
+               str::starts_with(peek8, "<p")   ||
+               str::starts_with(peek8, "<tr")  ||
+               str::starts_with(peek8, "<li")  ||
+               str::starts_with(peek8, "<h1")  ||
+               str::starts_with(peek8, "<h2")  ||
+               str::starts_with(peek8, "<h3")  ||
+               str::starts_with(peek8, "<h4")  ||
+               str::starts_with(peek8, "<h5")  ||
+               str::starts_with(peek8, "<h6")  ||
+               str::starts_with(peek8, "</div") ||
+               str::starts_with(peek8, "</p>") {
                 out = str_concat(out, "\n");
             }
             i = i + 1;
 
         } elif ch == "&" {
             let ent6 = str_slice(raw, i, i + 6);
-            if str_starts_with(ent6, "&amp;")  { out = str_concat(out, "&");  i = i + 5; }
-            elif str_starts_with(ent6, "&lt;")  { out = str_concat(out, "<");  i = i + 4; }
-            elif str_starts_with(ent6, "&gt;")  { out = str_concat(out, ">");  i = i + 4; }
-            elif str_starts_with(ent6, "&nbsp;") { out = str_concat(out, " ");  i = i + 6; }
-            elif str_starts_with(ent6, "&quot;") { out = str_concat(out, "\""); i = i + 6; }
-            elif str_starts_with(ent6, "&#39;")  { out = str_concat(out, "'");  i = i + 5; }
+            if str::starts_with(ent6, "&amp;")  { out = str_concat(out, "&");  i = i + 5; }
+            elif str::starts_with(ent6, "&lt;")  { out = str_concat(out, "<");  i = i + 4; }
+            elif str::starts_with(ent6, "&gt;")  { out = str_concat(out, ">");  i = i + 4; }
+            elif str::starts_with(ent6, "&nbsp;") { out = str_concat(out, " ");  i = i + 6; }
+            elif str::starts_with(ent6, "&quot;") { out = str_concat(out, "\""); i = i + 6; }
+            elif str::starts_with(ent6, "&#39;")  { out = str_concat(out, "'");  i = i + 5; }
             else { out = str_concat(out, ch); i = i + 1; }
 
         } elif ch == "\r" {
@@ -310,7 +310,7 @@ fn draw_frame(url_buf: str, content: str, total_lines: int, scroll: int,
     // scroll position hint
     if total_lines > 0 {
         let pct = ((scroll + visible_lines) * 100) / total_lines;
-        let pct_s = str_concat(str_from_int(pct), "%");
+        let pct_s = str_concat(str::from_int(pct), "%");
         let pw = gui_text_width(pct_s);
         col_dim();
         gui_draw_text(pct_s, ww - pw - MARGIN(), content_bot + (STATUS_H() - fh) / 2);
@@ -320,8 +320,8 @@ fn draw_frame(url_buf: str, content: str, total_lines: int, scroll: int,
 // ── fetch + process a URL ─────────────────────────────────────────────────────
 
 fn ensure_scheme(url: str) -> str {
-    if str_starts_with(url, "http://")  { return url; }
-    if str_starts_with(url, "https://") { return url; }
+    if str::starts_with(url, "http://")  { return url; }
+    if str::starts_with(url, "https://") { return url; }
     return str_concat("https://", url);
 }
 
@@ -379,7 +379,7 @@ fn main() {
                     gui_present();
 
                     let raw = net_http_get(url_buf);
-                    if str_starts_with(raw, "(curl error:") {
+                    if str::starts_with(raw, "(curl error:") {
                         status  = str_concat("error: ", raw);
                         content = str_concat("error: ", raw);
                         total_lines = 1;
@@ -524,7 +524,7 @@ fn main() {
                                status, addr_focused, mx, my);
                     gui_present();
                     let raw5 = net_http_get(url_buf);
-                    if str_starts_with(raw5, "(curl error:") {
+                    if str::starts_with(raw5, "(curl error:") {
                         status  = str_concat("error: ", raw5);
                         content = str_concat("error: ", raw5);
                         total_lines = 1;

@@ -43,13 +43,13 @@ fn trunc(s: str, w: int) -> str {
 
 fn size_str(n: int) -> str {
     if n < 0       { return "   ?"; }
-    if n < 1024    { return str_concat(pad_left_s(str_from_int(n), 4), "B"); }
-    if n < 1048576 { return str_concat(pad_left_s(str_from_int(n / 1024), 4), "K"); }
-    return str_concat(pad_left_s(str_from_int(n / 1048576), 4), "M");
+    if n < 1024    { return str_concat(pad_left_s(str::from_int(n), 4), "B"); }
+    if n < 1048576 { return str_concat(pad_left_s(str::from_int(n / 1024), 4), "K"); }
+    return str_concat(pad_left_s(str::from_int(n / 1048576), 4), "M");
 }
 
 fn fm_join(base: str, name: str) -> str {
-    if str_ends_with(base, "/") {
+    if str::ends_with(base, "/") {
         return str_concat(base, name);
     }
     return str_concat(str_concat(base, "/"), name);
@@ -129,8 +129,8 @@ fn draw_screen(path: str, count: int, selected: int,
     // status row
     io_move_cursor(rows - 1, 1);
     let status = if count > 0 {
-        str_concat("  ", str_concat(str_from_int(selected + 1),
-                   str_concat("/", str_concat(str_from_int(count), " entries"))))
+        str_concat("  ", str_concat(str::from_int(selected + 1),
+                   str_concat("/", str_concat(str::from_int(count), " entries"))))
     } else {
         str_concat("  0 entries in ", path)
     };

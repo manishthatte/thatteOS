@@ -44,25 +44,25 @@ fn strip_html(raw: str) -> str {
         } elif ch == "<" {
             in_tag = 1;
             // track <script>/<style> blocks so their contents are skipped
-            let peek9 = str_to_lower(str_slice(raw, i, i + 9));
-            if str_starts_with(peek9, "<script")  { in_script = 1; }
-            if str_starts_with(peek9, "</script") { in_script = 0; }
-            if str_starts_with(peek9, "<style")   { in_style = 1; }
-            if str_starts_with(peek9, "</style")  { in_style = 0; }
+            let peek9 = str::to_lower(str_slice(raw, i, i + 9));
+            if str::starts_with(peek9, "<script")  { in_script = 1; }
+            if str::starts_with(peek9, "</script") { in_script = 0; }
+            if str::starts_with(peek9, "<style")   { in_style = 1; }
+            if str::starts_with(peek9, "</style")  { in_style = 0; }
             // detect block-level tags that should produce newlines
-            let peek8 = str_to_lower(str_slice(raw, i, i + 8));
-            if str_starts_with(peek8, "<br") ||
-               str_starts_with(peek8, "<p") ||
-               str_starts_with(peek8, "<tr") ||
-               str_starts_with(peek8, "<li") ||
-               str_starts_with(peek8, "<h1") ||
-               str_starts_with(peek8, "<h2") ||
-               str_starts_with(peek8, "<h3") ||
-               str_starts_with(peek8, "<h4") ||
-               str_starts_with(peek8, "<h5") ||
-               str_starts_with(peek8, "<h6") ||
-               str_starts_with(peek8, "</div") ||
-               str_starts_with(peek8, "</p>") {
+            let peek8 = str::to_lower(str_slice(raw, i, i + 8));
+            if str::starts_with(peek8, "<br") ||
+               str::starts_with(peek8, "<p") ||
+               str::starts_with(peek8, "<tr") ||
+               str::starts_with(peek8, "<li") ||
+               str::starts_with(peek8, "<h1") ||
+               str::starts_with(peek8, "<h2") ||
+               str::starts_with(peek8, "<h3") ||
+               str::starts_with(peek8, "<h4") ||
+               str::starts_with(peek8, "<h5") ||
+               str::starts_with(peek8, "<h6") ||
+               str::starts_with(peek8, "</div") ||
+               str::starts_with(peek8, "</p>") {
                 out = str_concat(out, "\n");
             }
             i = i + 1;
@@ -74,12 +74,12 @@ fn strip_html(raw: str) -> str {
         } elif ch == "&" {
             // decode common HTML entities
             let ent6 = str_slice(raw, i, i + 6);
-            if str_starts_with(ent6, "&amp;")  { out = str_concat(out, "&");  i = i + 5; }
-            elif str_starts_with(ent6, "&lt;")  { out = str_concat(out, "<");  i = i + 4; }
-            elif str_starts_with(ent6, "&gt;")  { out = str_concat(out, ">");  i = i + 4; }
-            elif str_starts_with(ent6, "&nbsp;") { out = str_concat(out, " ");  i = i + 6; }
-            elif str_starts_with(ent6, "&quot;") { out = str_concat(out, "\""); i = i + 6; }
-            elif str_starts_with(ent6, "&#39;")  { out = str_concat(out, "'");  i = i + 5; }
+            if str::starts_with(ent6, "&amp;")  { out = str_concat(out, "&");  i = i + 5; }
+            elif str::starts_with(ent6, "&lt;")  { out = str_concat(out, "<");  i = i + 4; }
+            elif str::starts_with(ent6, "&gt;")  { out = str_concat(out, ">");  i = i + 4; }
+            elif str::starts_with(ent6, "&nbsp;") { out = str_concat(out, " ");  i = i + 6; }
+            elif str::starts_with(ent6, "&quot;") { out = str_concat(out, "\""); i = i + 6; }
+            elif str::starts_with(ent6, "&#39;")  { out = str_concat(out, "'");  i = i + 5; }
             else { out = str_concat(out, ch); i = i + 1; }
 
         } elif ch == "\r" {
@@ -319,15 +319,15 @@ fn main() {
         } else {
             // treat as URL — add https:// if no scheme
             // store in last_url so we can reuse without moving
-            let has_scheme = str_starts_with(line, "http://") ||
-                             str_starts_with(line, "https://");
+            let has_scheme = str::starts_with(line, "http://") ||
+                             str::starts_with(line, "https://");
             last_url = if has_scheme { line } else { str_concat("https://", line) };
 
             io::print("  fetching: ");
             io::println(last_url);
             let raw_html = net_http_get(last_url);
 
-            if str_starts_with(raw_html, "(curl error:") {
+            if str::starts_with(raw_html, "(curl error:") {
                 io::print("  ERROR: ");
                 io::println(raw_html);
             } elif str_len(raw_html) == 0 {

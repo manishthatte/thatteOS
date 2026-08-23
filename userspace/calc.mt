@@ -122,7 +122,7 @@ fn main() {
                 let rest = str_trim(str_slice(line, sp1 + 1, str_len(line)));
 
                 if op == "abs" {
-                    let n = str_parse_int(rest);
+                    let n = str::parse_int(rest);
                     let r = if n < 0 { 0 - n } else { n };
                     io::print("  abs(");
                     io::print_int(n);
@@ -133,7 +133,7 @@ fn main() {
                     io::println("]");
                 }
                 elif op == "neg" {
-                    let n = str_parse_int(rest);
+                    let n = str::parse_int(rest);
                     let r = 0 - n;
                     io::print("  neg(");
                     io::print_int(n);
@@ -149,8 +149,8 @@ fn main() {
                     if sp2 == -1 {
                         io::println("  usage: <a> <op> <b>  or  <op> <a> <b>  or  abs/neg <num>");
                     } else {
-                        let a = str_parse_int(str_slice(rest, 0, sp2));
-                        let b = str_parse_int(str_trim(str_slice(rest, sp2 + 1, str_len(rest))));
+                        let a = str::parse_int(str_slice(rest, 0, sp2));
+                        let b = str::parse_int(str_trim(str_slice(rest, sp2 + 1, str_len(rest))));
                         apply_op(a, op, b);
                     }
                 }
@@ -163,7 +163,7 @@ fn main() {
                         let op2 = str_slice(rest, 0, sp2);
                         let b_s = str_trim(str_slice(rest, sp2 + 1, str_len(rest)));
                         if is_binop(op2) {
-                            apply_op(str_parse_int(op), op2, str_parse_int(b_s));
+                            apply_op(str::parse_int(op), op2, str::parse_int(b_s));
                         } else {
                             io::print("  ? unknown op: ");
                             io::println(op2);

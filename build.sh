@@ -10,15 +10,37 @@
 #     MANITC=/path/to/manitc bash build.sh      # custom compiler location
 #
 # Steps:
-#   1. Compile thatteos.mt → LLVM IR via manitc
-#   2. Link with clang + the ManiT C runtime → ./thatteos binary
+#   1. Compile and link thatteos.mt → ./thatteos, via manitc
+#
+# WHY THIS IS ONE STEP NOW (23 August 2026). It used to be three: emit LLVM IR,
+# patch the IR with sed, then hand-link the IR against a separately compiled
+# manit_runtime.o. All three had rotted.
+#
+#   * The IR patch (`ret ptr 0` → `ret ptr null`) matched nothing. maniTC emits
+#     `ret ptr null` today; the sed was rewriting a bug that no longer exists.
+#
+#   * The hand-link broke outright. maniTC now compiles a growing part of the
+#     stdlib from ManiT SOURCE rather than the C runtime, and a ManiT function
+#     keeps its mangled name — `str::to_lower` is `@str_to_lower`, exactly the
+#     symbol the C runtime also defines. maniTC handles that: it omits the
+#     runtime's declare for anything the module itself defines, and it compiles
+#     the runtime object with matching flags. This script did neither, so
+#     linking thatteos.ll against a full manit_runtime.o produced "multiple
+#     definition of str_to_lower" and a dozen more like it.
+#
+#   * `-o build/thatteos.ll` silently means IR-ONLY. maniTC treats a .ll output
+#     path as "emit IR, do not link", so step 1 was never linking anyway and its
+#     exit code said nothing about whether the program would link.
+#
+# `manitc compile -o thatteos` does all of it correctly, including pkg-config
+# detection of SDL2/libcurl for the GUI and network builtins. Duplicating a
+# compiler's link logic in a shell script is how it drifts; delegating is how it
+# stops.
 #
 # Author: Manish Jagdish Thatte
 
 set -e
 cd "$(dirname "$0")"
-
-CLANG="${CLANG:-clang-19}"
 
 # The sibling checkout may be called either maniTC (the repository name, which
 # is what `git clone` produces) or manitc (the crate/binary name, which is what
@@ -34,11 +56,6 @@ if [ -z "$MANITC" ]; then
         fi
     done
 fi
-if [ -z "$RUNTIME_SRC" ] && [ -n "$SIBLING" ]; then
-    RUNTIME_SRC="$SIBLING/runtime/manit_runtime.c"
-fi
-RUNTIME_SRC="${RUNTIME_SRC:-../maniTC/runtime/manit_runtime.c}"
-
 if [ -z "$MANITC" ] || [ ! -x "$MANITC" ]; then
     echo "error: the manitc binary was not found in ../maniTC or ../manitc" >&2
     echo "build it first:  git clone https://github.com/manishthatte/maniTC && cd maniTC && cargo build --release" >&2
@@ -46,28 +63,11 @@ if [ -z "$MANITC" ] || [ ! -x "$MANITC" ]; then
     exit 1
 fi
 
-CURL_CFLAGS=$(pkg-config --cflags libcurl 2>/dev/null || echo "")
-CURL_LIBS=$(pkg-config --libs libcurl 2>/dev/null || echo "-lcurl")
-SDL_CFLAGS=$(pkg-config --cflags sdl2 SDL2_ttf 2>/dev/null || echo "")
-SDL_LIBS=$(pkg-config --libs sdl2 SDL2_ttf 2>/dev/null || echo "-lSDL2 -lSDL2_ttf")
-
-mkdir -p build
-RUNTIME=build/manit_runtime.o
-# Rebuild the runtime when missing OR when the C source is newer than the
-# object, so a stale runtime never links silently.
-if [ ! -f "$RUNTIME" ] || [ "$RUNTIME_SRC" -nt "$RUNTIME" ]; then
-    echo "[setup] compiling manit_runtime.c"
-    "$CLANG" -O2 $CURL_CFLAGS $SDL_CFLAGS -c "$RUNTIME_SRC" -o "$RUNTIME"
-fi
-
-echo "[1/3] compiling thatteos.mt → LLVM IR"
-"$MANITC" compile --target llvm thatteos.mt -o build/thatteos.ll
-
-echo "[2/3] patching  ret ptr 0 → ret ptr null"
-sed 's/ret ptr 0$/ret ptr null/g' build/thatteos.ll > build/thatteos_fixed.ll
-
-echo "[3/3] linking"
-"$CLANG" build/thatteos_fixed.ll "$RUNTIME" -o thatteos -lm $CURL_LIBS $SDL_LIBS
+echo "[1/1] compiling and linking thatteos.mt"
+# NOTE the output name has no .ll suffix. maniTC reads a .ll output path as a
+# request for IR only and skips linking entirely, which is exactly how the
+# previous version of this script appeared to succeed while producing nothing.
+"$MANITC" compile thatteos.mt -o thatteos
 
 echo ""
 echo "  done.  binary: ./thatteos"

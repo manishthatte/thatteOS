@@ -46,7 +46,7 @@ fn col_btn_hl()   -> int { return gui_set_color(70,  70,  100, 255); }
 // ── path helpers ─────────────────────────────────────────────────────────────
 
 fn gfm_join(base: str, name: str) -> str {
-    if str_ends_with(base, "/") {
+    if str::ends_with(base, "/") {
         return str_concat(base, name);
     }
     return str_concat(str_concat(base, "/"), name);
@@ -67,9 +67,9 @@ fn gfm_parent(p: str) -> str {
 
 fn size_str(n: int) -> str {
     if n < 0       { return "?"; }
-    if n < 1024    { return str_concat(str_from_int(n), " B"); }
-    if n < 1048576 { return str_concat(str_from_int(n / 1024), " K"); }
-    return str_concat(str_from_int(n / 1048576), " M");
+    if n < 1024    { return str_concat(str::from_int(n), " B"); }
+    if n < 1048576 { return str_concat(str::from_int(n / 1024), " K"); }
+    return str_concat(str::from_int(n / 1048576), " M");
 }
 
 // ── button helper ─────────────────────────────────────────────────────────────
@@ -246,8 +246,8 @@ fn draw_frame(cwd: str, count: int, selected: int, offset: int,
     gui_draw_line(0, list_bot, ww, list_bot);
 
     let stat = if count > 0 {
-        str_concat(str_from_int(selected + 1),
-            str_concat("/", str_concat(str_from_int(count), " entries")))
+        str_concat(str::from_int(selected + 1),
+            str_concat("/", str_concat(str::from_int(count), " entries")))
     } else {
         "empty directory"
     };

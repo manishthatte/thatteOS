@@ -36,7 +36,7 @@ fn to_balanced_ternary(n: int) -> str {
 }
 
 fn pad_left_int(n: int, width: int) -> str {
-    let s = str_from_int(n);
+    let s = str::from_int(n);
     let mut r = s;
     while str_len(r) < width {
         r = str_concat(" ", r);
@@ -50,7 +50,7 @@ fn main() {
     io::print("  how many terms? (max 40)> ");
     let raw = io::read_line();
     let n_str = str_trim(raw);
-    let mut n = str_parse_int(n_str);
+    let mut n = str::parse_int(n_str);
     if n <= 0  { n = 20; }
     if n > 40  { n = 40; }
 

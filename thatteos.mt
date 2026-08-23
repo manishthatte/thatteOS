@@ -383,7 +383,7 @@ fn cmd_cat(path: str) {
     }
     let content = fs::read_file(path);
     io::print(content);
-    if !str_ends_with(content, "\n") { io::println(""); }
+    if !str::ends_with(content, "\n") { io::println(""); }
 }
 
 // ============================================================================
@@ -581,7 +581,7 @@ fn cmd_trit(arg: str) {
         io::println("  examples:  trit 42   trit -13   trit 729   trit 0");
         return;
     }
-    let n = str_parse_int(a);
+    let n = str::parse_int(a);
     let ternary = to_balanced_ternary(n);
     io::print("  ");
     io::print(a);
@@ -683,8 +683,8 @@ fn cmd_kill(args: str) {
     }
     let pid_str = str_slice(args, 0, space);
     let sig_str = str_trim(str_slice(args, space + 1, str_len(args)));
-    let pid = str_parse_int(pid_str);
-    let sig = str_parse_int(sig_str);
+    let pid = str::parse_int(pid_str);
+    let sig = str::parse_int(sig_str);
 
     if pid < 0 || pid > 8 {
         io::println("  kill: PID out of range (valid: 0-8)");
@@ -777,7 +777,7 @@ fn cmd_head(args: str) {
     let space = str_find(args, " ");
     let path  = if space == -1 { args } else { str_slice(args, 0, space) };
     let narg  = if space == -1 { "10" } else { str_trim(str_slice(args, space + 1, str_len(args))) };
-    let max_lines = str_parse_int(narg);
+    let max_lines = str::parse_int(narg);
     if max_lines <= 0 {
         io::print("  head: invalid line count: ");
         io::println(narg);

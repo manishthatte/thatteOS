@@ -277,22 +277,22 @@ fn cmd_clear() {
 fn args_after(cmd: str, n: int) -> str {
     let total = str_len(cmd);
     if total <= n { return ""; }
-    return str_substr(cmd, n, total - n);
+    return str::substr(cmd, n, total - n);
 }
 
 // Parse the first space-separated integer from a string.
 fn parse_first_int(s: str) -> int {
     let sp = str_find(s, " ");
-    if sp < 0 { return str_parse_int(s); }
-    return str_parse_int(str_substr(s, 0, sp));
+    if sp < 0 { return str::parse_int(s); }
+    return str::parse_int(str::substr(s, 0, sp));
 }
 
 // Parse the second space-separated integer from a string like "PID SIG".
 fn parse_second_int(s: str) -> int {
     let sp = str_find(s, " ");
     if sp < 0 { return 0; }
-    let rest = str_substr(s, sp + 1, str_len(s) - sp - 1);
-    return str_parse_int(rest);
+    let rest = str::substr(s, sp + 1, str_len(s) - sp - 1);
+    return str::parse_int(rest);
 }
 
 // ---------------------------------------------------------------------------
@@ -330,22 +330,22 @@ fn dispatch_command(cmd: str, state: ShellState) -> ShellState {
         return ShellState { privilege: state.privilege, username: state.username,
                             pid: state.pid, running: false, cmd_count: new_count,
                             tick: state.tick };
-    } elif str_starts_with(cmd, "trit ") {
+    } elif str::starts_with(cmd, "trit ") {
         // "trit N" — convert any integer to balanced ternary
         let arg = args_after(cmd, 5);
-        cmd_trit(str_parse_int(arg));
-    } elif str_starts_with(cmd, "echo ") {
+        cmd_trit(str::parse_int(arg));
+    } elif str::starts_with(cmd, "echo ") {
         // "echo <anything>" — print argument
         let arg = args_after(cmd, 5);
         io::print("  ");
         io::println(arg);
-    } elif str_starts_with(cmd, "kill ") {
+    } elif str::starts_with(cmd, "kill ") {
         // "kill PID SIGNAL" — parse two space-separated integers
         let args = args_after(cmd, 5);
         let target_pid = parse_first_int(args);
         let signal = parse_second_int(args);
         cmd_kill(target_pid, signal);
-    } elif str_starts_with(cmd, "stat ") {
+    } elif str::starts_with(cmd, "stat ") {
         // "stat <path>" — any path
         let path = args_after(cmd, 5);
         cmd_stat(path);

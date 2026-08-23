@@ -47,7 +47,7 @@ fn pad_right(s: str, width: int) -> str {
 }
 
 fn pad_left_int(n: int, width: int) -> str {
-    let s = str_from_int(n);
+    let s = str::from_int(n);
     let mut r = s;
     while str_len(r) < width {
         r = str_concat(" ", r);
@@ -101,9 +101,9 @@ fn main() {
     let mut i = 0;
     while i < size {
         let ch  = str_slice(content, i, i + 1);
-        // Real char code of the byte (str_char_at returns a signed byte;
+        // Real char code of the byte (str::char_at returns a signed byte;
         // normalise to unsigned 0-255)
-        let mut byt = str_char_at(content, i);
+        let mut byt: int = str::char_at(content, i) as int;
         if byt < 0 { byt = byt + 256; }
         let bt = to_balanced_ternary(byt);
         let hex = to_hex(byt);
