@@ -230,9 +230,11 @@ fn do_load(path: str) -> str {
 // ── main ──────────────────────────────────────────────────────────────────────
 
 fn main() {
-    // Read argv twice so each call yields an independent string (no double-move).
-    let mut save_path = if env::argc() > 1 { env::argv(1) } else { "" };
-    let load_path     = if env::argc() > 1 { env::argv(1) } else { "" };
+    // Read the argument twice so each call yields an independent string (no
+    // double-move).  The function is `env::arg`, not `env::argv`: argv is the
+    // whole vector (`env::args()`), and `arg(i)` is the one at i.
+    let mut save_path = if env::argc() > 1 { env::arg(1) } else { "" };
+    let load_path     = if env::argc() > 1 { env::arg(1) } else { "" };
     let mut doc       = do_load(load_path);
     let mut dirty = 0;
     let mut cur_row  = 0;
