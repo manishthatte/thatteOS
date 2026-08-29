@@ -4,3 +4,28 @@
 *.o
 userspace/bin/
 *.t3b
+
+# studioMani build artefacts. `studioMani/build.sh` writes native binaries,
+# LLVM IR and T3ISA assembly here; none of it belongs in the repository.
+studioMani/output/
+*.t3s
+
+# Bare-metal boot images, 46 MB of them. These are BUILD PRODUCTS of the
+# Target-B/QEMU experiment (a Linux kernel plus an initramfs carrying thatteOS),
+# not thatteOS source. The analysis document beside them IS source and is
+# tracked; the images are not. Named explicitly rather than by extension
+# because they have none, and a `git add -A` has swept this tree before.
+baremetal/thatteos_vmlinuz
+baremetal/thatteos_initramfs
+
+# NOT PUBLISHED, deliberately, and not a build artefact — these two are SOURCE
+# that stays in the working tree and out of the public repository until the PCT
+# filing is secured (~Mar 2027). CLAUDE.md rule 8.
+#   baremetal/ANALYSIS.txt  names THATTE@DWCNT, calls the inherited capability
+#                           state a novel security primitive, and refers to the
+#                           modules' patent claims.
+#   CLAUDE.md               states the AC/pulse-polarity device mechanism.
+# GitHub content is indexed and cached; deleting a file later does not unpublish
+# it, so the decision is taken here rather than after the fact.
+baremetal/ANALYSIS.txt
+/CLAUDE.md
