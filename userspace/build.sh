@@ -40,7 +40,45 @@ BINDIR=userspace/bin
 
 mkdir -p "$BINDIR"
 
-PROGRAMS="calc tritdump fib caps_demo ipc_demo fm browser editor gui_fm gui_browser"
+# The ORDER is presentation order; the CONTENT is checked against the directory
+# immediately below, because this list omitting a file is not hypothetical — it
+# omitted security_demo, stream_demo and sysinfo, all three of which compiled
+# and linked cleanly the whole time. Nothing failed; three programs simply were
+# not built, and `tests/test_all.sh` then had no binary to test them with. That
+# is report.txt P42's shape: a list that omits an input converts an unexercised
+# program into a smaller green number. Adding the three names would have fixed
+# the instance and left the mechanism; the drift check is what closes it.
+PROGRAMS="calc tritdump fib caps_demo ipc_demo fm browser editor gui_fm gui_browser security_demo stream_demo sysinfo"
+
+# A registry that must agree with another registry should be CHECKED, not
+# described (report.txt P60). The other registry here is the directory listing.
+MISSING_FROM_LIST=""
+for f in "$USRDIR"/*.mt; do
+    base=$(basename "$f" .mt)
+    case " $PROGRAMS " in
+        *" $base "*) ;;
+        *) MISSING_FROM_LIST="$MISSING_FROM_LIST $base" ;;
+    esac
+done
+if [ -n "$MISSING_FROM_LIST" ]; then
+    echo "error: these userspace programs exist as source but are not in PROGRAMS:" >&2
+    for m in $MISSING_FROM_LIST; do echo "         $USRDIR/$m.mt" >&2; done
+    echo "       add them to PROGRAMS, or delete the source. A program that is" >&2
+    echo "       never built is never tested and never known to be broken." >&2
+    exit 1
+fi
+
+# And the converse: a name in the list with no source is a build that dies
+# halfway through, having already written some binaries. Catch it before any
+# compilation starts, so bin/ is never left half-current.
+MISSING_SOURCE=""
+for prog in $PROGRAMS; do
+    [ -f "$USRDIR/${prog}.mt" ] || MISSING_SOURCE="$MISSING_SOURCE $prog"
+done
+if [ -n "$MISSING_SOURCE" ]; then
+    echo "error: PROGRAMS names these, but no source exists:$MISSING_SOURCE" >&2
+    exit 1
+fi
 TOTAL=$(echo $PROGRAMS | wc -w)
 N=0
 
@@ -72,3 +110,6 @@ echo "    $BINDIR/editor  <file>  # TUI text editor"
 echo "    $BINDIR/gui_fm          # graphical file manager (SDL2)"
 echo "    $BINDIR/gui_browser     # graphical web browser  (SDL2)"
 echo "    echo 'hello.txt' | $BINDIR/tritdump"
+echo "    $BINDIR/security_demo    # three-ring privilege + CapWord attenuation"
+echo "    $BINDIR/stream_demo      # zero-copy trit stream IPC"
+echo "    $BINDIR/sysinfo          # system information"

@@ -1,0 +1,83 @@
+# src/kernel.manifest — the thatteOS kernel, in one translation unit
+#
+# Author: Manish Jagdish Thatte
+# © Manish Jagdish Thatte
+#
+# WHY A MANIFEST AND NOT `use`. ManiT has no cross-file bodies: `use m;`
+# registers m's SIGNATURES and drops its bodies, so the program type-checks
+# and then fails at link with `Undefined label: m::f` (T3) or
+# `use of undefined value '@m_f'` (LLVM). Re-measured against the compiler on
+# 30 August 2026, not read out of a document — it is still true.
+#
+# Until it stops being true, a program that spans files is a program whose
+# modules are CONCATENATED, and `studioMani/build.sh` has done exactly this
+# for thirteen modules since before this file existed. The manifest is that
+# list, written down where a reader can find it rather than buried in a shell
+# script, and `tools/merge_modules.py` is what turns it into the merged source
+# plus a LINE MAP so a diagnostic in the merged file can be traced back to the
+# module and line it came from.
+#
+# WHAT THIS COSTS: ONE FLAT NAMESPACE. Every module's top-level names share it,
+# so two modules cannot both define `priv_name`. That is not a defect of the
+# mechanism — it is the mechanism telling the truth about a kernel that had
+# `priv_name` six times, `PCB` three times and `state_name` three times, each
+# copy free to drift from the others because nothing ever compiled them
+# together. Deduplicating them was the work of ENHANCEMENT_PLAN.md §1.2.
+#
+# ORDER. A callee may appear anywhere; a STRUCT must precede its first use.
+# The order below is therefore dependency order, roughly bottom-up: ternary
+# primitives, then kernel services, then memory, then filesystem, then IPC,
+# then drivers and syscalls, then security, and `boot.mt` last because
+# `kernel_main` calls everything above it.
+#
+# ADDING A MODULE: put it here, in the position its struct dependencies need,
+# and run `bash build.sh`. There is no second place to register it — and that
+# is deliberate, because `userspace/build.sh`'s PROGRAMS list omitted three
+# programs for weeks and nothing noticed.
+
+# --- ternary primitives -----------------------------------------------------
+src/kernel/tmin2.mt
+
+# --- kernel services --------------------------------------------------------
+src/kernel/klog.mt
+src/kernel/privilege.mt
+src/kernel/panic.mt
+src/kernel/guard.mt
+src/kernel/context.mt
+src/kernel/process.mt
+src/kernel/scheduler.mt
+src/kernel/timer.mt
+src/kernel/signal.mt
+src/kernel/interrupt.mt
+
+# --- memory management ------------------------------------------------------
+src/mm/pgtable.mt
+src/mm/vmem.mt
+src/mm/mmu.mt
+
+# --- filesystem -------------------------------------------------------------
+# inode.mt defines Inode and TritFS; fdtable.mt defines FileDesc and FdTable;
+# perms.mt is the permission layer; tritfs.mt composes them. Before the merge
+# tritfs.mt carried its OWN copy of all 28 of those declarations and had not
+# one of its own — see ENHANCEMENT_PLAN.md §1.2.
+src/fs/inode.mt
+src/fs/perms.mt
+src/fs/fdtable.mt
+src/fs/tritfs.mt
+
+# --- IPC --------------------------------------------------------------------
+src/ipc/messages.mt
+src/ipc/pipe.mt
+src/ipc/trit_stream.mt
+
+# --- drivers and syscalls ---------------------------------------------------
+src/drivers/tty.mt
+src/syscall/syscall.mt
+
+# --- security ---------------------------------------------------------------
+src/security/capability.mt
+src/security/photon_cap.mt
+
+# --- entry point (last: kernel_main calls everything above) -----------------
+src/boot.mt
+src/entry_kernel.mt

@@ -43,7 +43,7 @@ struct PhotonCapEntry {
     pub target_pid: t9,
 }
 
-fn empty_entry() -> PhotonCapEntry {
+fn photon_empty_entry() -> PhotonCapEntry {
     return PhotonCapEntry {
         zone_id: 0,
         wavelength_nm: 0,
@@ -53,7 +53,7 @@ fn empty_entry() -> PhotonCapEntry {
     };
 }
 
-fn print_entry(e: PhotonCapEntry, idx: int) {
+fn photon_print_entry(e: PhotonCapEntry, idx: int) {
     io::print("    [");
     io::print_int(idx);
     io::print("] zone=");
@@ -91,9 +91,9 @@ struct PhotonSchedule {
 fn schedule_create() -> PhotonSchedule {
     io::println("[PHOTON_CAP] schedule_create: empty manifest");
     return PhotonSchedule {
-        e0: empty_entry(), e1: empty_entry(), e2: empty_entry(),
-        e3: empty_entry(), e4: empty_entry(), e5: empty_entry(),
-        e6: empty_entry(), e7: empty_entry(), e8: empty_entry(),
+        e0: photon_empty_entry(), e1: photon_empty_entry(), e2: photon_empty_entry(),
+        e3: photon_empty_entry(), e4: photon_empty_entry(), e5: photon_empty_entry(),
+        e6: photon_empty_entry(), e7: photon_empty_entry(), e8: photon_empty_entry(),
         count: 0,
     };
 }
@@ -112,7 +112,7 @@ fn get_entry(s: PhotonSchedule, idx: int) -> PhotonCapEntry {
     elif idx == 6 { return s.e6; }
     elif idx == 7 { return s.e7; }
     elif idx == 8 { return s.e8; }
-    else { return empty_entry(); }
+    else { return photon_empty_entry(); }
 }
 
 fn set_entry(s: PhotonSchedule, idx: int, e: PhotonCapEntry) -> PhotonSchedule {
@@ -217,7 +217,7 @@ fn schedule_revoke(s: PhotonSchedule, zone: t9, pid: t9) -> PhotonSchedule {
         // (zone 0, pid 0) never matches a cleared entry.
         if e.duration_cycles > 0 tand e.zone_id == zone tand e.target_pid == pid {
             // Zero out this entry (revoke grant)
-            result = set_entry(result, i, empty_entry());
+            result = set_entry(result, i, photon_empty_entry());
             io::print("  entry [");
             io::print_int(i);
             io::println("] revoked — photon delivery ceased");
@@ -351,7 +351,7 @@ fn print_schedule(s: PhotonSchedule) {
     while i < 9 {
         let e = get_entry(s, i);
         if e.duration_cycles > 0 {
-            print_entry(e, i);
+            photon_print_entry(e, i);
         } else {
             io::print("    [");
             io::print_int(i);
@@ -364,91 +364,3 @@ fn print_schedule(s: PhotonSchedule) {
 // ---------------------------------------------------------------------------
 // main: demonstrate photon schedule capabilities
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS Photon Schedule Capability ===");
-    io::println("Claim 25: Photon delivery IS capability exercise");
-    io::println("          Photon cessation IS instant irrevocable revocation");
-    io::println("          Forgery requires physical access to optical network");
-    io::println("");
-
-    // --- Create empty schedule ---
-    io::println("--- Create empty schedule ---");
-    let mut sched = schedule_create();
-    io::println("");
-
-    // --- Grant capabilities ---
-    io::println("--- Grant photon capabilities ---");
-    // PID=1 gets zone 0 on wavelength channel A, cycles 0..1000
-    // (wavelength values are abstract WDM channel identifiers in the emulator)
-    sched = schedule_grant(sched, 0, 101, 1, 0, 1000);
-    // PID=2 gets zone 1 on wavelength channel B, cycles 0..500
-    sched = schedule_grant(sched, 1, 102, 2, 0, 500);
-    // PID=3 gets zone 2 on wavelength channel A, cycles 100..900
-    sched = schedule_grant(sched, 2, 101, 3, 100, 800);
-    io::println("");
-
-    // --- Show schedule ---
-    io::println("--- Current schedule ---");
-    print_schedule(sched);
-    io::println("");
-
-    // --- Check authorization ---
-    io::println("--- Authorization checks ---");
-    io::println("");
-
-    io::println("PID=1, zone=0, cycle=500 (should be authorized):");
-    let c1 = schedule_check(sched, 0, 1, 500);
-    io::println("");
-
-    io::println("PID=2, zone=1, cycle=600 (should be expired — past 500):");
-    let c2 = schedule_check(sched, 1, 2, 600);
-    io::println("");
-
-    io::println("PID=3, zone=2, cycle=50 (should be denied — before start 100):");
-    let c3 = schedule_check(sched, 2, 3, 50);
-    io::println("");
-
-    io::println("PID=99, zone=0, cycle=100 (should be denied — no grant):");
-    let c4 = schedule_check(sched, 0, 99, 100);
-    io::println("");
-
-    // --- Delegate capability ---
-    io::println("--- Delegate: PID=1 delegates zone=0 to PID=4 ---");
-    sched = schedule_delegate(sched, 1, 4, 0);
-    io::println("");
-
-    io::println("After delegation:");
-    print_schedule(sched);
-    io::println("");
-
-    io::println("PID=1, zone=0, cycle=500 (should be denied — delegated away):");
-    let c5 = schedule_check(sched, 0, 1, 500);
-    io::println("");
-
-    io::println("PID=4, zone=0, cycle=500 (should be authorized — received delegation):");
-    let c6 = schedule_check(sched, 0, 4, 500);
-    io::println("");
-
-    // --- Revoke capability ---
-    io::println("--- Revoke: PID=2 loses zone=1 ---");
-    sched = schedule_revoke(sched, 1, 2);
-    io::println("");
-
-    io::println("After revocation:");
-    print_schedule(sched);
-    io::println("");
-
-    io::println("PID=2, zone=1, cycle=100 (should be denied — revoked):");
-    let c7 = schedule_check(sched, 1, 2, 100);
-    io::println("");
-
-    io::println("=== Photon capability claims verified ===");
-    io::println("  Schedule create (empty manifest):     PASS");
-    io::println("  Grant (program photon delivery):      PASS");
-    io::println("  Check (time-windowed authorization):  PASS");
-    io::println("  Delegate (transfer, not copy):        PASS");
-    io::println("  Revoke (photon cessation = instant):  PASS");
-    io::println("  No-grant denial:                      PASS");
-    io::println("  Expired-window denial:                PASS");
-}

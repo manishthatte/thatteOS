@@ -24,13 +24,8 @@ fn severity_name(s: trit) -> str {
     }
 }
 
-fn priv_name(p: trit) -> str {
-    tif p {
-        + => return "KERNEL(+1)",
-        0 => return "SERVICE(0)",
-        - => return "USER(-1)",
-    }
-}
+// `priv_name` moved to kernel/privilege.mt in the 30 Aug merge -- three
+// kernel modules carried a byte-identical copy.
 
 // ---------------------------------------------------------------------------
 // Fault codes (ternary-indexed: -4 to +4)
@@ -207,53 +202,3 @@ fn double_fault(pc: int, pid: int) {
 // ---------------------------------------------------------------------------
 // main: demonstrate all fault types and severities
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS Panic Handler Demo ===");
-    io::println("Fault severity: +=WARNING  0=RECOVERABLE  -=FATAL");
-    io::println("");
-
-    // --- WARNING: alignment fault ---
-    io::println("--- Test 1: ALIGNMENT_FAULT (WARNING) ---");
-    let cpu1 = make_cpu_state(4096, 8192, -, 3);
-    kernel_panic(4, 4097, cpu1);
-    io::println("");
-
-    // --- RECOVERABLE: page fault ---
-    io::println("--- Test 2: PAGE_FAULT (RECOVERABLE) ---");
-    page_fault(65536, 1024, 2, -);
-    io::println("");
-
-    // --- RECOVERABLE: privilege fault ---
-    io::println("--- Test 3: PRIVILEGE_FAULT (RECOVERABLE) ---");
-    privilege_fault(2048, 5, -);
-    io::println("");
-
-    // --- RECOVERABLE: division by zero ---
-    io::println("--- Test 4: DIVISION_BY_ZERO (RECOVERABLE) ---");
-    division_by_zero(3072, 1, -);
-    io::println("");
-
-    // --- RECOVERABLE: stack overflow ---
-    io::println("--- Test 5: STACK_OVERFLOW (RECOVERABLE) ---");
-    stack_overflow(0, 4, -);
-    io::println("");
-
-    // --- FATAL: bus error ---
-    io::println("--- Test 6: BUS_ERROR (FATAL) ---");
-    let cpu6 = make_cpu_state(5000, 9000, +, 0);
-    kernel_panic(3, 999999, cpu6);
-    io::println("");
-
-    // --- FATAL: double fault ---
-    io::println("--- Test 7: DOUBLE_FAULT (FATAL) ---");
-    double_fault(6000, 0);
-    io::println("");
-
-    io::println("=== Panic handler claims verified ===");
-    io::println("  9 fault codes (-4 to +4):       PASS");
-    io::println("  3 severity levels (+/0/-):       PASS");
-    io::println("  CPU state dump:                  PASS");
-    io::println("  Recovery actions per severity:   PASS");
-    io::println("  Convenience fault raisers:       PASS");
-}

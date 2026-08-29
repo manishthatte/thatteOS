@@ -59,6 +59,15 @@ fn access_str(allowed: bool) -> str {
     else { return "TRAP"; }
 }
 
+// An escalation that is denied must leave the ring EXACTLY as it was. The demo
+// asserted that in prose — "ring unchanged" — and captured `ring_before` to
+// prove it, then never compared. A claim printed beside an unread variable is
+// not a check.
+fn invariant_str(held: bool) -> str {
+    if held { return "HELD"; }
+    else { return "VIOLATED"; }
+}
+
 fn trit_eq(a: trit, b: trit) -> bool {
     tif a {
         + => { tif b { + => return true, 0 => return false, - => return false } }
@@ -240,12 +249,19 @@ fn main() {
     log_event(seq, "USER -> KERNEL: FAULT (escalation denied, ring unchanged)");
     io::print("  Ring remains: ");
     io::println(ring_name(ring));
+    io::print("  [CHECK] ring invariant after denied escalation: ");
+    io::println(invariant_str(trit_eq(ring_before, ring)));
     io::println("");
 
     // USER -> SERVICE (FAULT — escalation denied)
+    let ring_before_svc = ring;
     ring = sys_priv_set(ring, 0);
     seq = seq + 1;
     log_event(seq, "USER -> SERVICE: FAULT (escalation denied, ring unchanged)");
+    io::print("  Ring remains: ");
+    io::println(ring_name(ring));
+    io::print("  [CHECK] ring invariant after denied escalation: ");
+    io::println(invariant_str(trit_eq(ring_before_svc, ring)));
     io::println("");
 
     // Reset to KERNEL for next section

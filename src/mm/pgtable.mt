@@ -35,7 +35,11 @@ fn print_page_entry(vaddr: int, e: PageEntry) {
     io::println_trit(e.exec_perm);
 }
 
-fn perm_name(p: trit, kind: str) -> str {
+// Renamed from `perm_name` in the 30 Aug merge: this one takes TWO
+// arguments and answers what the fault handler should DO — "allow",
+// "deny", or which of three zero-fill strategies. The signature alone
+// says it was never the fs layer's `perm_name`.
+fn pgfault_action(p: trit, kind: str) -> str {
     tif p {
         + => return "allow",
         0 => {
@@ -58,11 +62,11 @@ fn map_page(vaddr: int, perm_r: trit, perm_w: trit, perm_x: trit) -> PageEntry {
     io::print("[PGTBL] map_page: vaddr=");
     io::print_int(vaddr);
     io::print(" read=");
-    io::print(perm_name(perm_r, "read"));
+    io::print(pgfault_action(perm_r, "read"));
     io::print(" write=");
-    io::print(perm_name(perm_w, "write"));
+    io::print(pgfault_action(perm_w, "write"));
     io::print(" exec=");
-    io::println(perm_name(perm_x, "exec"));
+    io::println(pgfault_action(perm_x, "exec"));
 
     return entry;
 }
@@ -171,73 +175,3 @@ fn handle_page_access(vaddr: int, access_type: trit, entry: PageEntry) {
 // ---------------------------------------------------------------------------
 // main: demonstrate page table and conditional permissions
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS Page Table Demo ===");
-    io::println("Claim 10: Conditional page permissions");
-    io::println("  -1=deny  0=conditional(CoW/demand-zero/JIT)  +1=allow");
-    io::println("");
-
-    // --- Map pages with different permission combinations ---
-    io::println("--- Mapping pages ---");
-    let p_kernel = map_page(1000, +, +, -);   // kernel: RW, no-exec
-    let p_cow    = map_page(2000, 0, -, -);   // CoW read, deny write/exec
-    let p_code   = map_page(3000, +, -, 0);   // read, no-write, JIT exec
-    let p_dz     = map_page(4000, +, 0, +);   // read, demand-zero write, exec
-    let p_deny   = map_page(5000, -, -, -);   // all deny
-    io::println("");
-
-    // --- Test all 9 access/permission combinations ---
-    io::println("--- Access Demonstrations ---");
-    io::println("");
-
-    // READ with +1 perm (allow)
-    io::println("Test 1: READ on kernel page (read_perm=+1):");
-    handle_page_access(1000, +, p_kernel);
-    io::println("");
-
-    // READ with 0 perm (CoW)
-    io::println("Test 2: READ on CoW page (read_perm=0):");
-    handle_page_access(2000, +, p_cow);
-    io::println("");
-
-    // READ with -1 perm (deny)
-    io::println("Test 3: READ on deny-all page (read_perm=-1):");
-    handle_page_access(5000, +, p_deny);
-    io::println("");
-
-    // WRITE with +1 perm (allow)
-    io::println("Test 4: WRITE on kernel page (write_perm=+1):");
-    handle_page_access(1000, 0, p_kernel);
-    io::println("");
-
-    // WRITE with 0 perm (demand-zero)
-    io::println("Test 5: WRITE on demand-zero page (write_perm=0):");
-    handle_page_access(4000, 0, p_dz);
-    io::println("");
-
-    // WRITE with -1 perm (deny)
-    io::println("Test 6: WRITE on deny-all page (write_perm=-1):");
-    handle_page_access(5000, 0, p_deny);
-    io::println("");
-
-    // EXEC with +1 perm (allow)
-    io::println("Test 7: EXEC on demand-zero page (exec_perm=+1):");
-    handle_page_access(4000, -, p_dz);
-    io::println("");
-
-    // EXEC with 0 perm (JIT)
-    io::println("Test 8: EXEC on JIT page (exec_perm=0):");
-    handle_page_access(3000, -, p_code);
-    io::println("");
-
-    // EXEC with -1 perm (deny)
-    io::println("Test 9: EXEC on deny-all page (exec_perm=-1):");
-    handle_page_access(5000, -, p_deny);
-    io::println("");
-
-    io::println("=== Page table claims verified ===");
-    io::println("  9 permission/access combinations tested: PASS");
-    io::println("  CoW(0)/demand-zero(0)/JIT(0) conditional: PASS");
-    io::println("  deny(-1) and allow(+1) direct paths:      PASS");
-}

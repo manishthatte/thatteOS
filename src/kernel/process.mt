@@ -11,7 +11,18 @@ use std::io;
 // PCB structure
 // ---------------------------------------------------------------------------
 
+// ONE PCB, 30 August 2026. There were three: this one, kernel/scheduler.mt's,
+// and a dead one in boot.mt. They were not copies that had drifted -- they held
+// DIFFERENT FIELDS, because each module had described the part of a process it
+// personally cared about and nothing ever made them meet. This module knew a
+// process's identity and privilege; the scheduler knew its priority, its age
+// and how much of its quantum it had spent.
+//
+// A real process control block is the union, so that is what this is. The merge
+// was a design decision at this site rather than a deletion: choosing either
+// module's struct would have silently thrown away the other's three fields.
 struct PCB {
+    // identity and privilege (this module)
     pub pid: int,
     pub state: int,
     pub pc: int,
@@ -19,6 +30,10 @@ struct PCB {
     pub privilege: trit,
     pub page_table: int,
     pub parent_pid: int,
+    // scheduling (kernel/scheduler.mt)
+    pub priority: trit,    // HIGH(+) NORMAL(0) LOW(-)
+    pub age: int,          // ticks since last dispatch (starvation counter)
+    pub quantum_used: int, // ticks used in current quantum
 }
 
 fn make_pcb(pid: int, state: int, priv_level: trit, parent: int) -> PCB {
@@ -30,6 +45,12 @@ fn make_pcb(pid: int, state: int, priv_level: trit, parent: int) -> PCB {
         privilege: priv_level,
         page_table: 0,
         parent_pid: parent,
+        // A process created here has not been scheduled yet: NORMAL priority,
+        // no age, no quantum spent. `make_pcb_prio` in kernel/scheduler.mt is
+        // the constructor for the other direction.
+        priority: 0,
+        age: 0,
+        quantum_used: 0,
     };
 }
 
@@ -44,13 +65,12 @@ fn print_pcb(p: PCB) {
     io::println_int(p.parent_pid);
 }
 
-// Process state constants
-fn state_name(s: int) -> str {
-    if s == 3 { return "READY(+3)"; }
-    elif s == -3 { return "EXITED(-3)"; }
-    elif s == -4 { return "KILLED(-4)"; }
-    else { return "FAULTED(-5)"; }
-}
+// `state_name` moved out, 30 August 2026. This module had a four-arm version
+// answering "READY(+3)", "EXITED(-3)", "KILLED(-4)" and "FAULTED(-5)" for
+// everything else -- so it named four of the nine states a process can be in
+// and misreported the other five. kernel/scheduler.mt's names all nine and is
+// now the only one. The suffixed spelling is the loss and it is a small one:
+// every caller here prints the number beside the name already.
 
 // ---------------------------------------------------------------------------
 // Simulated process table
@@ -109,9 +129,12 @@ fn sys_exec(p: PCB, image_addr: int) -> PCB {
     io::println_int(image_addr);
 
     // Fresh image: PC starts at image_addr, state READY
-    let new_p = PCB { pid: p.pid, state: 3, pc: image_addr, sp: p.sp,
-                      privilege: p.privilege, page_table: p.page_table,
-                      parent_pid: p.parent_pid };
+    // `PCB { ..p, ... }` rather than a field-by-field copy, and the reason is
+    // the merge that produced this struct: a spelled-out literal has to be
+    // revisited every time PCB gains a field, and the ten-field union it became
+    // on 30 August 2026 broke every one of the seven literals in this kernel at
+    // once. An update expression cannot forget a field.
+    let new_p = PCB { ..p, state: 3, pc: image_addr };
     io::print("  process.pc = 0x");
     io::println_int(new_p.pc);
     io::println("  process.state = READY (+3)");
@@ -151,44 +174,3 @@ fn sys_exit(p: PCB, code: trit) -> PCB {
 // ---------------------------------------------------------------------------
 // main: demonstrate process lifecycle
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS Process Management Demo ===");
-    io::println("Claim 4: SYS_FORK / SYS_EXEC / SYS_EXIT ABI");
-    io::println("");
-
-    // Create init process (PID=1, USER privilege)
-    let init_pcb = make_pcb(1, 3, -, 0);
-    io::print("Init process: ");
-    print_pcb(init_pcb);
-    io::println("");
-
-    // sys_fork: init creates a child
-    io::println("--- SYS_FORK ---");
-    let child_pcb = sys_fork(init_pcb);
-    io::println("");
-
-    // sys_exec: load a program into child
-    io::println("--- SYS_EXEC ---");
-    let exec_addr = 4096;
-    let child_exec = sys_exec(child_pcb, exec_addr);
-    io::println("");
-
-    // sys_exit: child exits with code +1 -> EXITED
-    io::println("--- SYS_EXIT code=+ (normal exit) ---");
-    let exited_pcb = sys_exit(child_exec, +);
-    io::print("  final state: ");
-    print_pcb(exited_pcb);
-    io::println("");
-
-    // sys_exit: killed process
-    io::println("--- SYS_EXIT code=- (killed) ---");
-    let killed = sys_exit(init_pcb, -);
-    io::print("  final state: ");
-    print_pcb(killed);
-    io::println("");
-
-    io::println("=== Process management claims verified ===");
-    io::println("PCB fields: pid/state/pc/sp/privilege/page_table/parent_pid");
-    io::println("CoW fork, exec image load, exit state transitions — all PASS");
-}

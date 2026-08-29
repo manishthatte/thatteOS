@@ -75,6 +75,55 @@ if [ ! -d "$BINDIR" ]; then
     exit 1
 fi
 echo "  userspace bin: ok"
+
+# Every userspace program that EXISTS AS SOURCE must have a binary here. Until
+# 30 August 2026 this script only guarded each test individually on `[ -x ... ]`
+# and skipped silently, and the total below is PASS+FAIL — so a missing bin/
+# ran 27 of 61 checks, passed 27, and printed ALL TESTS PASSED. A green summary
+# said nothing about whether the tests ran.
+#
+# The denominator is now the directory, not whatever happened to be on disk.
+MISSING_BINS=""
+for f in userspace/*.mt; do
+    base=$(basename "$f" .mt)
+    [ -x "$BINDIR/$base" ] || MISSING_BINS="$MISSING_BINS $base"
+done
+if [ -n "$MISSING_BINS" ]; then
+    echo "  MISSING binaries for:$MISSING_BINS"
+    echo "  run: bash userspace/build.sh"
+    echo "  (refusing to run a partial suite — a skipped check is not a pass)"
+    exit 1
+fi
+echo "  userspace coverage: ok — $(ls -1 userspace/*.mt | wc -l) sources, all built"
+
+KERNEL=./build/kernel
+KERNEL_T3=./build/kernel.t3b
+KERNEL_DEMOS=./build/kernel_demos
+for b in "$KERNEL" "$KERNEL_T3" "$KERNEL_DEMOS"; do
+    if [ ! -f "$b" ]; then
+        echo "  MISSING: $b — run: bash build.sh"
+        exit 1
+    fi
+done
+
+# STALENESS, and this is not a hypothetical guard. On 30 August 2026 the T3
+# code image crossed its 60,000-word ceiling and the assembler refused to write
+# build/kernel.t3b — and this suite reported 96/96, because the PREVIOUS run's
+# .t3b was still on disk and was what it tested. A failed build left a passing
+# test. An artefact older than the source it claims to be built from is not
+# evidence about that source.
+for b in "$KERNEL" "$KERNEL_T3"; do
+    if [ "build/kernel.mt" -nt "$b" ]; then
+        echo "  STALE: $b is older than build/kernel.mt — run: bash build.sh"
+        echo "  (a build that failed can leave the previous artefact in place)"
+        exit 1
+    fi
+done
+if [ "build/kernel_demos.mt" -nt "$KERNEL_DEMOS" ]; then
+    echo "  STALE: $KERNEL_DEMOS is older than build/kernel_demos.mt — run: bash build.sh"
+    exit 1
+fi
+echo "  kernel: ok (both backends, artefacts current)"
 echo ""
 
 # ── section 1: shell basics ──────────────────────────────────────────────────
@@ -368,10 +417,175 @@ fi
 
 echo ""
 
+# ── section 10: the three programs that were built but never listed ──────────
+#
+# security_demo, stream_demo and sysinfo compiled and linked cleanly for weeks;
+# `userspace/build.sh`'s PROGRAMS list simply never named them, so no binary
+# existed and no test could reference one. They are ENHANCEMENT_PLAN.md §1.4.
+
+echo "--- [10] security_demo, stream_demo, sysinfo ---"
+
+OUT=$(timeout 10 "$BINDIR/security_demo" 2>&1 || true)
+check "security: three-ring model stated"   "$OUT" "Three rings of privilege"
+check "security: KERNEL row all ALLOW"      "$OUT" "KERNEL  (+1)    |    ALLOW     |      ALLOW      |    ALLOW"
+check "security: USER private page TRAPs"   "$OUT" "USER    (-1)    |    TRAP     |      TRAP      |    ALLOW"
+check "security: escalation denied"         "$OUT" "Privilege escalation USER -> KERNEL DENIED"
+check "security: ring invariant held"       "$OUT" "[CHECK] ring invariant after denied escalation: HELD"
+check "security: capability fault reported" "$OUT" "*** CAPABILITY FAULT ***"
+check "security: revoked grant is dark"     "$OUT" "revoked — zone is dark"
+# The invariant helper prints HELD or VIOLATED. A demo whose own check failed
+# must not pass this suite, and the positive check above cannot see a SECOND
+# occurrence that went the other way.
+if [[ "$OUT" == *"VIOLATED"* ]]; then
+    echo "  FAIL  security: no ring invariant violated"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS  security: no ring invariant violated"
+    PASS=$((PASS + 1))
+fi
+
+OUT=$(timeout 10 "$BINDIR/stream_demo" 2>&1 || true)
+check "stream: channel allocated"           "$OUT" "SWCNT path allocated"
+check "stream: zero-copy claim stated"      "$OUT" "Same physical current as sender"
+check "stream: word transfer"               "$OUT" "Full Word Transfer"
+check "stream: teardown"                    "$OUT" "closed"
+# Three single-trit round trips: +1, 0, -1. Count them rather than matching one,
+# because one PASS present says nothing about the other two.
+RT=$(printf '%s\n' "$OUT" | grep -c "round-trip PASS" || true)
+if [ "$RT" -eq 3 ]; then
+    echo "  PASS  stream: 3/3 trit round-trips verified"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL  stream: 3/3 trit round-trips verified"
+    echo "        expected 3 'round-trip PASS' lines, got: $RT"
+    FAIL=$((FAIL + 1))
+fi
+if [[ "$OUT" == *"round-trip FAIL"* ]]; then
+    echo "  FAIL  stream: no failed round-trip"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS  stream: no failed round-trip"
+    PASS=$((PASS + 1))
+fi
+
+OUT=$(timeout 10 "$BINDIR/sysinfo" 2>&1 || true)
+check "sysinfo: OS and version"             "$OUT" "thatteOS 0.1.0"
+check "sysinfo: architecture"               "$OUT" "T3ISA (27-trit balanced ternary)"
+check "sysinfo: author"                     "$OUT" "Manish Jagdish Thatte"
+check "sysinfo: 3^27 address space"         "$OUT" "3^27 = 7,625,597,484,987"
+check "sysinfo: 729-trit page"              "$OUT" "3^6 = 729 trits"
+check "sysinfo: MST region layout"          "$OUT" "MST(+1): positive addresses"
+check "sysinfo: process table"              "$OUT" "PID=3  shell"
+check "sysinfo: TritFS section"             "$OUT" "TritFS"
+
+echo ""
+
+# ── section 11: the kernel, as ONE program ───────────────────────────────────
+#
+# ENHANCEMENT_PLAN.md §1. Until 30 August 2026 src/ was twenty-six .mt files
+# with twenty-six `fn main`, and NOTHING compiled any of them — so this section
+# is the first test the kernel has ever had.
+#
+# It asserts the boot sequence reaches the real modules, not boot.mt's own
+# stubs of them. The `[IRQ]` and `[VMEM]` prefixes are the evidence: boot.mt's
+# retired copies printed `[BOOT]`, so a banner from the real module is proof
+# the call went where the merge sent it.
+
+echo "--- [11] the kernel, one program, both backends ---"
+
+OUT=$(timeout 30 "$KERNEL" 2>&1 || true)
+check "kernel: boot banner"                 "$OUT" "THATTE-OS 0.1.0"
+check "kernel: reaches kernel/interrupt.mt" "$OUT" "[IRQ] interrupt_init: registering 27 interrupt vectors"
+check "kernel: reaches mm/vmem.mt"          "$OUT" "[VMEM]"
+check "kernel: reaches syscall/syscall.mt"  "$OUT" "[SYSCALL]"
+check "kernel: reaches drivers/tty.mt"      "$OUT" "[TTY] tty_init: loading TTY driver"
+check "kernel: privilege drop to SERVICE"   "$OUT" "drop_to_service"
+check "kernel: launches init at USER"       "$OUT" "init: running at USER privilege"
+check "kernel: scheduler pass completes"    "$OUT" "[SCHED] scheduler_run: pass complete"
+check "kernel: boot completes"              "$OUT" "THATTE-OS boot sequence complete"
+# boot.mt's own stubs printed [BOOT] for these. If one comes back, a module got
+# re-implemented locally again and this is the row that notices.
+if [[ "$OUT" == *"[BOOT] interrupt_init"* ]] || [[ "$OUT" == *"[BOOT] vmem_init"* ]] || \
+   [[ "$OUT" == *"[BOOT] syscall_init"* ]] || [[ "$OUT" == *"[BOOT] process_init"* ]]; then
+    echo "  FAIL  kernel: no module re-implemented in boot.mt"
+    FAIL=$((FAIL + 1))
+else
+    echo "  PASS  kernel: no module re-implemented in boot.mt"
+    PASS=$((PASS + 1))
+fi
+
+# The 25 module demos — a SECOND program, build/kernel_demos, built from
+# src/kernel_demos.manifest. They were 25 separate `fn main`s before the merge
+# and nothing ran any of them; renaming them to `*_demo()` without calling them
+# would have made them dead code with a nicer name.
+#
+# They are a separate program rather than a flag because the T3 backend emits
+# every function in a translation unit whether it is reachable or not: beside
+# the kernel they cost 19,000 words of a 60,000-word image, and with the
+# assertions below added they took it over the ceiling.
+#
+# The 37 [CHECK] lines they print are the ones that used to be `let r1 = ...`
+# bindings nobody read, beside hardcoded "PASS" string literals. The expected
+# value at each site was derived FROM THE SOURCE -- the CapWord constructors,
+# `sys_kill`'s privilege rules, the demo's own stated intent -- and not from
+# what the program happened to print, because a check that copies the observed
+# answer tests nothing.
+DEMOS=$(timeout 60 "$KERNEL_DEMOS" 2>&1 || true)
+check "demos: all 25 ran"           "$DEMOS" "all 25 module demonstrations complete"
+NPASS=$(printf '%s\n' "$DEMOS" | grep -c "CHECK\] PASS" || true)
+NFAIL=$(printf '%s\n' "$DEMOS" | grep -c "CHECK\] FAIL" || true)
+if [ "$NPASS" -eq 37 ] && [ "$NFAIL" -eq 0 ]; then
+    echo "  PASS  demos: 37/37 in-kernel assertions hold"
+    PASS=$((PASS + 1))
+else
+    echo "  FAIL  demos: 37/37 in-kernel assertions hold"
+    echo "        got $NPASS PASS and $NFAIL FAIL"
+    printf '%s\n' "$DEMOS" | grep "CHECK\] FAIL" | head -5
+    FAIL=$((FAIL + 1))
+fi
+
+# T3ISA is the actual target, so the kernel is checked ON it, not merely
+# compiled FOR it. Byte-for-byte against the hosted run: a kernel that builds
+# for T3 and answers differently there has not been ported, it has been forked.
+MANITC_BIN="${MANITC:-../manitc/target/release/manitc}"
+if [ -x "$MANITC_BIN" ]; then
+    T3OUT=$(timeout 60 "$MANITC_BIN" run-t3 "$KERNEL_T3" 2>&1 | tail -n +2 || true)
+    if [ "$T3OUT" = "$OUT" ]; then
+        echo "  PASS  kernel: T3ISA output is byte-identical to hosted"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL  kernel: T3ISA output is byte-identical to hosted"
+        echo "        hosted $(printf '%s' "$OUT" | wc -l) lines, t3 $(printf '%s' "$T3OUT" | wc -l) lines"
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo "  FAIL  kernel: T3ISA output is byte-identical to hosted"
+    echo "        the compiler was not found at $MANITC_BIN, so the T3 half"
+    echo "        could not run. This is a FAIL and not a skip on purpose:"
+    echo "        a skipped check is what made 27/27 read as ALL TESTS PASSED."
+    FAIL=$((FAIL + 1))
+fi
+
+echo ""
+
 # ── summary ──────────────────────────────────────────────────────────────────
 
 TOTAL=$((PASS + FAIL))
 echo "=== results: $PASS/$TOTAL passed ==="
+
+# The denominator is derived from what RAN, so it cannot detect its own
+# shrinkage — that is exactly how 27/27 once read as ALL TESTS PASSED. Assert
+# the count. This constant is a second source of truth and it is deliberate:
+# it is the only thing that can notice a check disappearing. Update it in the
+# same commit that adds or removes one; the message says so.
+EXPECTED_CHECKS=96
+if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
+    echo "    SUITE INCOMPLETE: ran $TOTAL checks, expected $EXPECTED_CHECKS"
+    echo "    a check disappeared, or one was added without updating"
+    echo "    EXPECTED_CHECKS in tests/test_all.sh"
+    exit 1
+fi
+
 if [ $FAIL -eq 0 ]; then
     echo "    ALL TESTS PASSED"
     exit 0

@@ -1,0 +1,76 @@
+# src/kernel_demos.manifest — the kernel PLUS its 25 module demonstrations
+#
+# Author: Manish Jagdish Thatte
+# © Manish Jagdish Thatte
+#
+# The same 26 kernel modules as src/kernel.manifest, in the same order,
+# followed by the 25 demo modules and a different entry point. HOSTED ONLY.
+#
+# WHY IT IS A SEPARATE MANIFEST AND NOT A FLAG. The T3 backend emits every
+# function in the translation unit, reachable or not. With the demos beside the
+# kernel the T3 code image reached **60,621 words against a 60,000-word
+# ceiling** and the assembler refused it — the stack grows down from 60,000 and
+# would have overwritten the code. Moving only the ENTRY POINT changed nothing,
+# because reachability is not what that backend prunes on: the demos had to
+# leave the translation unit entirely. Boot-only fits.
+#
+# So this is not "the kernel with demos switched on". It is a second program
+# built from the same modules, and only one of the two has to fit on hardware.
+
+# --- the kernel, exactly as src/kernel.manifest lists it --------------------
+src/kernel/tmin2.mt
+src/kernel/klog.mt
+src/kernel/privilege.mt
+src/kernel/panic.mt
+src/kernel/guard.mt
+src/kernel/context.mt
+src/kernel/process.mt
+src/kernel/scheduler.mt
+src/kernel/timer.mt
+src/kernel/signal.mt
+src/kernel/interrupt.mt
+src/mm/pgtable.mt
+src/mm/vmem.mt
+src/mm/mmu.mt
+src/fs/inode.mt
+src/fs/perms.mt
+src/fs/fdtable.mt
+src/fs/tritfs.mt
+src/ipc/messages.mt
+src/ipc/pipe.mt
+src/ipc/trit_stream.mt
+src/drivers/tty.mt
+src/syscall/syscall.mt
+src/security/capability.mt
+src/security/photon_cap.mt
+src/boot.mt
+
+# --- the demonstrations (src/demos/tmin2.mt also carries the expect_* helpers)
+src/demos/tmin2.mt
+src/demos/klog.mt
+src/demos/privilege.mt
+src/demos/panic.mt
+src/demos/guard.mt
+src/demos/context.mt
+src/demos/process.mt
+src/demos/scheduler.mt
+src/demos/timer.mt
+src/demos/signal.mt
+src/demos/interrupt.mt
+src/demos/pgtable.mt
+src/demos/vmem.mt
+src/demos/mmu.mt
+src/demos/inode.mt
+src/demos/perms.mt
+src/demos/fdtable.mt
+src/demos/tritfs.mt
+src/demos/messages.mt
+src/demos/pipe.mt
+src/demos/trit_stream.mt
+src/demos/tty.mt
+src/demos/syscall.mt
+src/demos/capability.mt
+src/demos/photon_cap.mt
+
+# --- entry point ------------------------------------------------------------
+src/entry_demos.mt

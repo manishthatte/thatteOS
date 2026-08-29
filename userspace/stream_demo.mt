@@ -59,6 +59,28 @@ fn trit_str(v: trit) -> str {
     }
 }
 
+fn trit_eq(a: trit, b: trit) -> bool {
+    tif a {
+        + => { tif b { + => return true, 0 => return false, - => return false } }
+        0 => { tif b { + => return false, 0 => return true, - => return false } }
+        - => { tif b { + => return false, 0 => return false, - => return true } }
+    }
+}
+
+// The zero-copy claim is that the trit the receiver observes IS the trit the
+// sender drove — the same current on the same SWCNT, not a copy of it. The
+// demo printed that claim and checked nothing; stream_read's return value was
+// bound to r1/r2/r3 and discarded. Stating the claim beside the answer is what
+// makes this a check rather than a narration.
+fn check_roundtrip(sent: trit, got: trit) {
+    if trit_eq(sent, got) {
+        io::print("  [CHECK] round-trip PASS — receiver observed the driven trit: ");
+    } else {
+        io::print("  [CHECK] round-trip FAIL — receiver observed a different trit: ");
+    }
+    io::println(trit_str(got));
+}
+
 fn stream_write(s: TritStream, value: trit) {
     io::print("  [SEND] PID=");
     io::print_int(s.sender_pid);
@@ -192,16 +214,19 @@ fn main() {
     // Send +1
     stream_write(s, +);
     let r1 = stream_read(s, +);
+    check_roundtrip(+, r1);
     io::println("");
 
     // Send 0
     stream_write(s, 0);
     let r2 = stream_read(s, 0);
+    check_roundtrip(0, r2);
     io::println("");
 
     // Send -1
     stream_write(s, -);
     let r3 = stream_read(s, -);
+    check_roundtrip(-, r3);
     io::println("");
 
     // =======================================================================

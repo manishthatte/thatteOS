@@ -35,7 +35,7 @@ fn make_entry(tick: int, level: trit, subsys: str, msg: str) -> LogEntry {
     };
 }
 
-fn empty_entry() -> LogEntry {
+fn klog_empty_entry() -> LogEntry {
     return LogEntry {
         tick: 0,
         level: 0,
@@ -93,15 +93,15 @@ fn klog_init() -> KernelLog {
         write_idx: 0,
         min_level: 0,
         system_tick: 0,
-        e0: empty_entry(),
-        e1: empty_entry(),
-        e2: empty_entry(),
-        e3: empty_entry(),
-        e4: empty_entry(),
-        e5: empty_entry(),
-        e6: empty_entry(),
-        e7: empty_entry(),
-        e8: empty_entry(),
+        e0: klog_empty_entry(),
+        e1: klog_empty_entry(),
+        e2: klog_empty_entry(),
+        e3: klog_empty_entry(),
+        e4: klog_empty_entry(),
+        e5: klog_empty_entry(),
+        e6: klog_empty_entry(),
+        e7: klog_empty_entry(),
+        e8: klog_empty_entry(),
     };
 }
 
@@ -238,7 +238,11 @@ fn klog_set_level(log: KernelLog, new_level: trit) -> KernelLog {
 // klog_dump: display all entries (dmesg equivalent)
 // ---------------------------------------------------------------------------
 
-fn print_entry(e: LogEntry) {
+// `klog_`-prefixed in the 30 Aug merge. security/photon_cap.mt has its own
+// `print_entry` over a PhotonCapEntry — a different record with different
+// fields, sharing only the English word "entry". Neither is a copy of the
+// other and there is nothing to merge, so both were prefixed.
+fn klog_print_entry(e: LogEntry) {
     if e.valid {
         io::print("    T=");
         io::print_int(e.tick);
@@ -277,7 +281,7 @@ fn klog_dump(log: KernelLog) {
     while i < log.count {
         let mut idx = start + i;
         if idx >= 9 { idx = idx - 9; }
-        print_entry(klog_get(log, idx));
+        klog_print_entry(klog_get(log, idx));
         i = i + 1;
     }
 
@@ -303,65 +307,3 @@ fn klog_stats(log: KernelLog) {
 // ---------------------------------------------------------------------------
 // main: demonstrate kernel logging
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS Kernel Log Demo ===");
-    io::println("Log levels: DEBUG(+) INFO(0) ERROR(-)");
-    io::println("Ring buffer: 9 entries (ternary: 3^2)");
-    io::println("");
-
-    let mut log = klog_init();
-    io::println("");
-
-    // --- Boot sequence logging ---
-    io::println("--- Boot Sequence Logging ---");
-    log = klog(log, 0, "BOOT", "kernel_main: starting boot sequence");
-    log = klog_tick(log);
-    log = klog(log, 0, "IRQ", "interrupt_init: 27 vectors registered");
-    log = klog_tick(log);
-    log = klog(log, 0, "PROC", "process_init: 9-slot table ready");
-    log = klog_tick(log);
-    log = klog(log, 0, "VMEM", "vmem_init: address space mapped");
-    log = klog_tick(log);
-    log = klog(log, 0, "SCALL", "syscall_init: 16 handlers registered");
-    log = klog_tick(log);
-    log = klog(log, 0, "TTY", "tty_init: driver loaded at SERVICE");
-    log = klog_tick(log);
-    log = klog(log, 0, "INIT", "init process spawned at USER");
-    io::println("");
-
-    // --- Debug message (should be filtered out at INFO level) ---
-    io::println("--- DEBUG message (filtered at INFO level) ---");
-    log = klog(log, +, "SCHED", "scheduler tick — this should NOT appear");
-    io::println("  (no output — DEBUG filtered)");
-    io::println("");
-
-    // --- Error message ---
-    io::println("--- ERROR message (always logged) ---");
-    log = klog_tick(log);
-    log = klog(log, -, "VMEM", "page fault at addr=0x10000 pid=3");
-    io::println("");
-
-    // --- Enable DEBUG level ---
-    io::println("--- Enable DEBUG level ---");
-    log = klog_set_level(log, +);
-    log = klog_tick(log);
-    log = klog(log, +, "SCHED", "scheduler tick — now visible with DEBUG level");
-    io::println("");
-
-    // --- Dump all entries ---
-    io::println("--- dmesg (full log dump) ---");
-    klog_dump(log);
-    io::println("");
-
-    // --- Statistics ---
-    klog_stats(log);
-    io::println("");
-
-    io::println("=== Kernel log claims verified ===");
-    io::println("  Ring buffer (9 entries):      PASS");
-    io::println("  3 log levels (+/0/-):         PASS");
-    io::println("  Level filtering:              PASS");
-    io::println("  Tick-stamped entries:          PASS");
-    io::println("  dmesg dump:                   PASS");
-}

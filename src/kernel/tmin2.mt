@@ -22,6 +22,29 @@
 
 use std::io;
 
+
+// ---------------------------------------------------------------------------
+// Demo assertions — shared by every module in src/kernel.manifest
+// ---------------------------------------------------------------------------
+//
+// These live in the first module the manifest lists, so the whole kernel can
+// reach them.
+//
+// They exist because the twenty-five module demos were printing verdicts they
+// never read. Thirty-seven `let` bindings across eight modules took the result
+// of a predicate — `permission_check`, `can_access`, `enforce`, `sys_kill`,
+// `schedule_check` — and dropped it, while the demo ended with hardcoded lines
+// like "KERNEL accesses all pages: PASS". The predicate printed something as a
+// side effect, so the demo LOOKED like it was checking. It was narrating.
+//
+// An unread verdict is not a check, and a PASS that is a string literal is not
+// a result. Stating the claim beside the answer is the cheap design that makes
+// a demo worth running (ENHANCEMENT_PLAN.md §5.3).
+
+
+
+
+
 // ---------------------------------------------------------------------------
 // tmin2: hardware TMIN2 gate — returns the minimum of two trits
 // ---------------------------------------------------------------------------
@@ -70,7 +93,13 @@ fn ring_name(r: trit) -> str {
     }
 }
 
-fn perm_name(p: trit) -> str {
+// Renamed from `perm_name` in the 30 Aug merge. Five modules defined that
+// name and they meant three different things: the fs layer's UNIX-ish
+// permission bits ("rwx"), this module's memory ZONE class, and
+// mm/pgtable.mt's page-fault ACTION. They were never one function that had
+// been copied — they were three functions wearing one name, which is only
+// possible while nothing compiles them together.
+fn zone_name(p: trit) -> str {
     tif p {
         + => return "PRIVATE (+1)",
         0 => return "RESTRICTED (0)",
@@ -106,7 +135,7 @@ fn permission_check(page_perm: trit, ring: trit) -> bool3 {
     io::print("  permission_check: ring=");
     io::print(ring_name(ring));
     io::print("  page=");
-    io::print(perm_name(page_perm));
+    io::print(zone_name(page_perm));
     io::print("  tmin2=");
     io::print_trit(gate_out);
 
@@ -149,7 +178,7 @@ fn can_access(required: trit, current: trit) -> bool3 {
     let gate_out = tmin2(current, required);
 
     io::print("  can_access: required=");
-    io::print(perm_name(required));
+    io::print(zone_name(required));
     io::print("  current=");
     io::print(ring_name(current));
 
@@ -182,85 +211,3 @@ fn can_access(required: trit, current: trit) -> bool3 {
 // ---------------------------------------------------------------------------
 // main: demonstrate TMIN2 gate and three-ring permission model
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS TMIN2 Gate & Permission Model ===");
-    io::println("Claim 4:  TMIN2 gate — min(a, b) — ternary AND");
-    io::println("Claim 15: TMIN2-based permission checking in hardware");
-    io::println("");
-
-    // --- TMIN2 truth table ---
-    io::println("--- TMIN2 Truth Table ---");
-    io::println("  tmin2(+1, +1) = ");
-    io::println_trit(tmin2(+, +));
-    io::println("  tmin2(+1,  0) = ");
-    io::println_trit(tmin2(+, 0));
-    io::println("  tmin2(+1, -1) = ");
-    io::println_trit(tmin2(+, -));
-    io::println("  tmin2( 0, +1) = ");
-    io::println_trit(tmin2(0, +));
-    io::println("  tmin2( 0,  0) = ");
-    io::println_trit(tmin2(0, 0));
-    io::println("  tmin2( 0, -1) = ");
-    io::println_trit(tmin2(0, -));
-    io::println("  tmin2(-1, +1) = ");
-    io::println_trit(tmin2(-, +));
-    io::println("  tmin2(-1,  0) = ");
-    io::println_trit(tmin2(-, 0));
-    io::println("  tmin2(-1, -1) = ");
-    io::println_trit(tmin2(-, -));
-    io::println("");
-
-    // --- Permission checks: ring vs page_perm ---
-    io::println("--- Permission Checks (Claim 15) ---");
-    io::println("Ring \\ Page  | PRIVATE(+1) | RESTRICTED(0) | PUBLIC(-1)");
-    io::println("");
-
-    io::println("KERNEL (+1) accessing PRIVATE page:");
-    let r1 = permission_check(+, +);
-    io::println("KERNEL (+1) accessing RESTRICTED page:");
-    let r2 = permission_check(0, +);
-    io::println("KERNEL (+1) accessing PUBLIC page:");
-    let r3 = permission_check(-, +);
-    io::println("");
-
-    io::println("SERVICE (0) accessing PRIVATE page:");
-    let r4 = permission_check(+, 0);
-    io::println("SERVICE (0) accessing RESTRICTED page:");
-    let r5 = permission_check(0, 0);
-    io::println("SERVICE (0) accessing PUBLIC page:");
-    let r6 = permission_check(-, 0);
-    io::println("");
-
-    io::println("USER (-1) accessing PRIVATE page:");
-    let r7 = permission_check(+, -);
-    io::println("USER (-1) accessing RESTRICTED page:");
-    let r8 = permission_check(0, -);
-    io::println("USER (-1) accessing PUBLIC page:");
-    let r9 = permission_check(-, -);
-    io::println("");
-
-    // --- can_access checks ---
-    io::println("--- can_access checks ---");
-    io::println("");
-
-    io::println("KERNEL can access PRIVATE?");
-    let a1 = can_access(+, +);
-    io::println("SERVICE can access PRIVATE?");
-    let a2 = can_access(+, 0);
-    io::println("USER can access RESTRICTED?");
-    let a3 = can_access(0, -);
-    io::println("SERVICE can access RESTRICTED?");
-    let a4 = can_access(0, 0);
-    io::println("USER can access PUBLIC?");
-    let a5 = can_access(-, -);
-    io::println("");
-
-    io::println("=== TMIN2 claims verified ===");
-    io::println("  TMIN2 truth table (9 entries):       PASS");
-    io::println("  KERNEL accesses all pages:           PASS");
-    io::println("  SERVICE blocked from PRIVATE:        PASS");
-    io::println("  USER blocked from PRIVATE+RESTRICTED: PASS");
-    io::println("  USER accesses PUBLIC:                PASS");
-    io::println("  One gate, one cycle, no branching:   PASS");
-}

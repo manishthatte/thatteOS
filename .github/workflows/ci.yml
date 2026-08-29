@@ -44,7 +44,11 @@ jobs:
         working-directory: manitc
         run: cargo build --release --locked
 
-      - name: Build the kernel shell
+      # build.sh now builds the KERNEL as well as the shell — 26 modules
+      # merged from src/kernel.manifest, for both backends. Until 30 August
+      # 2026 nothing here compiled src/ at all, and two modules had stopped
+      # compiling without anyone being told.
+      - name: Build the kernel and the shell
         working-directory: thatteos
         run: bash build.sh
 
@@ -55,3 +59,24 @@ jobs:
       - name: Regression tests
         working-directory: thatteos
         run: bash tests/test_all.sh
+
+      # ENHANCEMENT_PLAN.md §5.1: `--verify-ssa` over every .mt in this
+      # repository. It is what found report.txt P37 — five thatteOS files
+      # computing a wrong answer that 638 maniTC tests and a 17/17 parity
+      # matrix had all passed — and it was never run here.
+      - name: Verify SSA over every module
+        working-directory: thatteos
+        run: |
+          set -e
+          MANITC=../manitc/target/release/manitc
+          fail=0
+          for f in build/kernel.mt build/kernel_demos.mt thatteos.mt userspace/*.mt tests/*.mt; do
+            out=$("$MANITC" compile --target llvm --verify-ssa "$f" -o /dev/null 2>&1 || true)
+            bad=$(printf '%s' "$out" | grep -oE '[0-9]+ violations' | grep -voE '^0 ' || true)
+            if [ -n "$bad" ]; then
+              echo "SSA violations in $f:"
+              printf '%s\n' "$out" | grep -E 'violations|not in SSA'
+              fail=1
+            fi
+          done
+          exit $fail

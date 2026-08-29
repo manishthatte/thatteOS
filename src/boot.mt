@@ -10,6 +10,24 @@
 use std::io;
 use std::ternary;
 use std::fmt;
+use std::env;
+use std::str;
+
+// MERGE NOTE, 30 August 2026 — eight declarations left this file.
+// 
+// boot.mt used to carry its own `PCB`, `make_pcb`, `state_name`,
+// `get_primary`, `interrupt_init`, `process_init`, `syscall_init` and
+// `vmem_init`, because a .mt file could not use another one's bodies and
+// `kernel_main` had to call SOMETHING. They were stubs of the real ones and
+// free to drift from them, and they had: boot's `PCB` was process.mt's minus
+// `page_table`, and boot's `PCB` and `make_pcb` were never referenced at all
+// -- declared, and dead, for as long as this file has existed.
+// 
+// The kernel is one translation unit now (src/kernel.manifest), so
+// `kernel_main` calls the real ones: kernel/interrupt.mt, kernel/scheduler.mt,
+// syscall/syscall.mt and mm/vmem.mt. Four of the five inits had an IDENTICAL
+// signature, so those call sites did not move. The fifth did not -- see
+// `drop_to_service` below.
 
 // ---------------------------------------------------------------------------
 // T3ISA privilege constants (status register [26..25])
@@ -64,124 +82,25 @@ fn make_iv(vec: int, pri: trit, name: str) -> IVEntry {
     return IVEntry { vector: vec, priority: pri, name: name };
 }
 
-fn interrupt_init() {
-    io::println("[BOOT] interrupt_init: registering 27 interrupt vectors");
 
-    // Interrupt priority table — must match kernel/interrupt.mt:
-    //   vector 0        timer                  -> MEDIUM
-    //   vectors 1-5     syscall + faults       -> HIGH
-    //   vectors 6-17    hw/sw IRQ, device, IPC -> MEDIUM
-    //   vectors 18-26   deferred work          -> LOW
-    let priorities: [trit] = [0, +, +, +, +, +, 0, 0, 0,
-                                0, 0, 0, 0, 0, 0, 0, 0, 0,
-                                -, -, -, -, -, -, -, -, -];
-    let mut v = 0;
-    while v < 27 {
-        let pri = priorities[v];
-        tif pri {
-            + => {
-                io::print("    vector[");
-                io::print_int(v);
-                io::println("] priority=HIGH  (+1) — immediate dispatch");
-            }
-            0 => {
-                io::print("    vector[");
-                io::print_int(v);
-                io::println("] priority=MED   ( 0) — queue next tick");
-            }
-            - => {
-                io::print("    vector[");
-                io::print_int(v);
-                io::println("] priority=LOW   (-1) — defer to idle");
-            }
-        }
-        v = v + 1;
-    }
 
-    io::println("[BOOT] interrupt_init: default handlers set");
-    io::println("  vector[ 0] -> timer_handler      priority=MEDIUM");
-    io::println("  vector[+1] -> syscall_handler     priority=HIGH");
-    io::println("  vector[-1] -> fault_handler       priority=HIGH");
-    io::println("[BOOT] interrupt_init: IRQ enabled (STATUS[24]=+1)");
-}
 
-// ---------------------------------------------------------------------------
-// Process table (9 PCBs)
-// ---------------------------------------------------------------------------
 
-struct PCB {
-    pub pid: int,
-    pub state: int,
-    pub pc: int,
-    pub sp: int,
-    pub privilege: trit,
-    pub parent_pid: int,
-}
 
-fn make_pcb(pid: int, state: int, priv_level: trit, parent: int) -> PCB {
-    return PCB { pid: pid, state: state, pc: 0, sp: 0,
-                 privilege: priv_level, parent_pid: parent };
-}
-
-fn process_init() {
-    io::println("[BOOT] process_init: allocating 9-slot process table");
-    io::println("  Slot 0: PID=0 (idle)    state=READY(+3)  priv=KERNEL");
-    io::println("  Slot 1: PID=1 (init)    state=READY(+3)  priv=USER");
-    io::println("  Slots 2-8: empty");
-    io::println("[BOOT] process_init: done");
-}
-
-// ---------------------------------------------------------------------------
-// Virtual memory map
-// ---------------------------------------------------------------------------
-
-fn vmem_init() {
-    io::println("[BOOT] vmem_init: mapping T3ISA address space");
-    io::println("  MST=+1 kernel space: addr[26]=+1 — requires KERNEL privilege");
-    io::println("  MST= 0 shared space: addr[26]= 0 — all privilege levels");
-    io::println("  MST=-1 user space:   addr[26]=-1 — all privilege levels");
-    io::println("[BOOT] vmem_init: page size = 3^9 = 19683 words");
-    io::println("[BOOT] vmem_init: page perms: read/write/exec each {-1,0,+1}");
-    io::println("  read_perm:  -1=deny   0=copy-on-write  +1=allow");
-    io::println("  write_perm: -1=deny   0=demand-zero    +1=allow");
-    io::println("  exec_perm:  -1=deny   0=JIT-compile    +1=allow");
-    io::println("[BOOT] vmem_init: done");
-}
-
-// ---------------------------------------------------------------------------
-// Syscall table (16 syscalls)
-// ---------------------------------------------------------------------------
-
-fn syscall_init() {
-    io::println("[BOOT] syscall_init: registering 16 syscall handlers");
-    io::println("  Positive syscalls (process/memory management):");
-    io::println("    SYS_FORK       = +1");
-    io::println("    SYS_EXEC       = +2");
-    io::println("    SYS_EXIT       = +3");
-    io::println("    SYS_ALLOC      = +5");
-    io::println("    SYS_FREE       = +6");
-    io::println("    SYS_MOD_LOAD   = +10");
-    io::println("    SYS_MOD_UNLOAD = +11");
-    io::println("  Negative syscalls (I/O and communication):");
-    io::println("    SYS_YIELD      = -1");
-    io::println("    SYS_PRIV_SET   = -2");
-    io::println("    SYS_RECV       = -4");
-    io::println("    SYS_SEND       = -5");
-    io::println("    SYS_CLOSE      = -10");
-    io::println("    SYS_OPEN       = -11");
-    io::println("    SYS_READ       = -12");
-    io::println("    SYS_WRITE      = -13");
-    io::println("  Null syscall (void): SYS_NULL = 0");
-    io::println("[BOOT] syscall_init: dispatch via TBRANCH sign(R1)");
-    io::println("[BOOT] syscall_init: done");
-}
 
 // ---------------------------------------------------------------------------
 // TTY driver load at SERVICE privilege
 // ---------------------------------------------------------------------------
 
-fn tty_init(sr: StatusReg) -> StatusReg {
-    io::println("[BOOT] tty_init: dropping KERNEL -> SERVICE");
+// Renamed from `tty_init` in the 30 Aug merge, and this is the one init stub
+// that could NOT simply be deleted in favour of the real module's. The two
+// signatures do not meet: this took a StatusReg and returned one, while
+// drivers/tty.mt's `tty_init` takes a trit and returns a TtyState. They were
+// never the same operation wearing two shapes -- one moves the STATUS REGISTER
+// from KERNEL to SERVICE, the other loads the TTY DRIVER. `kernel_main` now
+// does both, in that order, and each is named for what it does.
+fn drop_to_service(sr: StatusReg) -> StatusReg {
+    io::println("[BOOT] drop_to_service: dropping KERNEL -> SERVICE");
     // Simulate privilege drop: KERNEL(+1) -> SERVICE(0)
     let new_sr = make_status(0, sr.irq_enable, sr.flags);
     io::print("  Privilege transition: ");
@@ -209,28 +128,7 @@ fn launch_init(sr: StatusReg) -> StatusReg {
     return new_sr;
 }
 
-// ---------------------------------------------------------------------------
-// Scheduler demonstration
-// ---------------------------------------------------------------------------
 
-fn get_primary(state: int) -> trit {
-    if state > 0 { return +; }
-    elif state == 0 { return 0; }
-    elif state >= -2 { return 0; }
-    else { return -; }
-}
-
-fn state_name(state: int) -> str {
-    if state == 4 { return "EXECUTING"; }
-    elif state == 3 { return "READY"; }
-    elif state == 2 { return "YIELDED"; }
-    elif state == 0 { return "IO_WAIT"; }
-    elif state == -1 { return "MSG_WAIT"; }
-    elif state == -2 { return "SLEEP"; }
-    elif state == -3 { return "EXITED"; }
-    elif state == -4 { return "KILLED"; }
-    else { return "FAULTED"; }
-}
 
 fn scheduler_run_demo() {
     io::println("[SCHED] scheduler_run: one scheduling pass over 9 PCBs");
@@ -308,8 +206,12 @@ fn kernel_main() {
     syscall_init();
     io::println("");
 
-    // Step 5: TTY driver (drops to SERVICE)
-    sr = tty_init(sr);
+    // Step 5: TTY driver, then the privilege drop that goes with it.
+    // Two calls where there used to be one, because there were always two
+    // operations here and boot.mt could only reach the register half.
+    let tty = tty_init(sr.privilege);
+    tty_stats(tty_print_info(tty, "kernel_main: TTY is the boot console"));
+    sr = drop_to_service(sr);
     io::println("");
 
     // Step 6: Launch init process (drops to USER)
@@ -326,6 +228,20 @@ fn kernel_main() {
     io::println("========================================");
 }
 
-fn main() {
-    kernel_main();
-}
+// ---------------------------------------------------------------------------
+// No `fn main` here — see src/entry_kernel.mt and src/entry_demos.mt
+// ---------------------------------------------------------------------------
+//
+// `kernel_main` is the boot sequence and nothing else. The entry point lives in
+// a one-function module chosen by the manifest, because there are two programs
+// built from these same 26 modules and they differ ONLY in their entry:
+//
+//     src/kernel.manifest        -> boot only          — BOTH backends
+//     src/kernel_demos.manifest  -> boot + 25 demos    — hosted only
+//
+// The split is forced by a hard number rather than by taste. The T3 code image
+// must fit below the stack at 60,000 words. Boot-only is 56,421. Adding
+// `run_all_demos()` makes all 25 demos REACHABLE, so nothing can eliminate
+// them, and the image becomes **60,760 words — 760 over, and the assembler
+// refuses it**. The demos are a hosted development aid; the kernel is the
+// thing that has to fit on the target, and it does.

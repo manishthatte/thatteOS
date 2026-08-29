@@ -30,6 +30,37 @@ struct CPUContext {
     pub valid: bool, // true = saved snapshot is live
 }
 
+// ---------------------------------------------------------------------------
+// RegFile: the nine general-purpose registers, as one value
+// ---------------------------------------------------------------------------
+//
+// Introduced 30 August 2026 because the kernel could not be built for its own
+// target. `context_save` took thirteen parameters and `context_switch` took
+// fifteen, and the T3 backend refuses both:
+//
+//     [T3ISA] `context_save` takes 13 parameters, but the T3 calling
+//     convention passes arguments only in R1-R8 and has no stack argument
+//     area. Pass the extra values in a struct, or split the function.
+//
+// LLVM has no such limit, so on the hosted backend those signatures compiled
+// and ran for months. **The two backends disagreed about whether this module
+// was legal at all**, and nothing said so, because nothing in this repository
+// ever compiled src/ for T3.
+//
+// Passing the register file as one value is also the honest model: on real
+// T3ISA hardware r0..r8 ARE one thing — the register file — and spreading them
+// across nine argument slots to describe a snapshot of all nine was always a
+// transcription of the struct that should have existed.
+struct RegFile {
+    pub r0: int, pub r1: int, pub r2: int,
+    pub r3: int, pub r4: int, pub r5: int,
+    pub r6: int, pub r7: int, pub r8: int,
+}
+
+fn empty_regfile() -> RegFile {
+    return RegFile { r0: 0, r1: 0, r2: 0, r3: 0, r4: 0, r5: 0, r6: 0, r7: 0, r8: 0 };
+}
+
 fn empty_context(pid: int) -> CPUContext {
     return CPUContext { pid: pid,
         r0: 0, r1: 0, r2: 0,
@@ -43,10 +74,7 @@ fn empty_context(pid: int) -> CPUContext {
 // context_save: snapshot register state for process pid
 // ---------------------------------------------------------------------------
 
-fn context_save(pid: int, pc: int, sp: int, lr: int,
-                r0: int, r1: int, r2: int,
-                r3: int, r4: int, r5: int,
-                r6: int, r7: int, r8: int) -> CPUContext {
+fn context_save(pid: int, pc: int, sp: int, lr: int, regs: RegFile) -> CPUContext {
     io::print("[CTX] context_save: PID=");
     io::print_int(pid);
     io::print("  PC=");
@@ -54,9 +82,9 @@ fn context_save(pid: int, pc: int, sp: int, lr: int,
     io::print("  SP=");
     io::println_int(sp);
     return CPUContext { pid: pid,
-        r0: r0, r1: r1, r2: r2,
-        r3: r3, r4: r4, r5: r5,
-        r6: r6, r7: r7, r8: r8,
+        r0: regs.r0, r1: regs.r1, r2: regs.r2,
+        r3: regs.r3, r4: regs.r4, r5: regs.r5,
+        r6: regs.r6, r7: regs.r7, r8: regs.r8,
         pc: pc, sp: sp, lr: lr,
         valid: true };
 }
@@ -170,18 +198,14 @@ fn context_bank_set(bank: ContextBank, ctx: CPUContext) -> ContextBank {
 
 fn context_switch(bank: ContextBank, from_pid: int, to_pid: int,
                   cur_pc: int, cur_sp: int, cur_lr: int,
-                  cur_r0: int, cur_r1: int, cur_r2: int,
-                  cur_r3: int, cur_r4: int, cur_r5: int,
-                  cur_r6: int, cur_r7: int, cur_r8: int) -> ContextBank {
+                  cur_regs: RegFile) -> ContextBank {
     io::print("[CTX] context_switch: PID ");
     io::print_int(from_pid);
     io::print(" -> PID ");
     io::println_int(to_pid);
 
     // Save current process context
-    let saved = context_save(from_pid, cur_pc, cur_sp, cur_lr,
-        cur_r0, cur_r1, cur_r2, cur_r3, cur_r4, cur_r5,
-        cur_r6, cur_r7, cur_r8);
+    let saved = context_save(from_pid, cur_pc, cur_sp, cur_lr, cur_regs);
     let new_bank = context_bank_set(bank, saved);
 
     // Restore next process context
@@ -194,59 +218,3 @@ fn context_switch(bank: ContextBank, from_pid: int, to_pid: int,
 // ---------------------------------------------------------------------------
 // main: demonstrate context save/restore
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS CPU Context Switch Demo ===");
-    io::println("Thatte3 Claim 2: T3ISA 9+3 register file");
-    io::println("Thatte3 Claim 7: context save/restore for preemption");
-    io::println("");
-
-    let mut bank = context_bank_init();
-
-    // Pre-load a saved context for PID 1 (init process at startup)
-    io::println("--- Bootstrapping PID 1 context (init) ---");
-    let init_ctx = context_save(1,
-        100,    // PC = instruction 100 (init entry point)
-        4000,   // SP = stack top
-        0,      // LR = 0 (no caller)
-        0, 1, 0, 0, 0, 0, 0, 0, 0);
-    bank = context_bank_set(bank, init_ctx);
-    io::println("");
-
-    // PID 2 (shell) is running; timer fires — switch to PID 1
-    io::println("--- Timer preempt: PID 2 (shell) -> PID 1 (init) ---");
-    bank = context_switch(bank,
-        2,      // from: shell
-        1,      // to:   init
-        // shell's current register state:
-        200, 8000, 204,   // PC, SP, LR
-        42, 7, 0, 13, 0, 0, 0, 0, 0);
-    io::println("");
-
-    // Check shell context was saved
-    io::println("--- Verify PID 2 context was saved ---");
-    let shell_ctx = context_bank_get(bank, 2);
-    io::print("  PID 2 saved: PC=");
-    io::print_int(shell_ctx.pc);
-    io::print("  SP=");
-    io::print_int(shell_ctx.sp);
-    io::print("  r0=");
-    io::println_int(shell_ctx.r0);
-    io::println("");
-
-    // Switch back to shell
-    io::println("--- Schedule back: PID 1 -> PID 2 (shell) ---");
-    bank = context_switch(bank,
-        1,      // from: init
-        2,      // to:   shell
-        105, 4000, 0,   // init's current PC, SP, LR
-        0, 0, 0, 0, 0, 0, 0, 0, 0);
-    io::println("");
-
-    io::println("=== Context claims verified ===");
-    io::println("  T3ISA 9+3 register file save:   PASS");
-    io::println("  context_save (snapshot):        PASS");
-    io::println("  context_restore (log reload):   PASS");
-    io::println("  ContextBank (9-slot table):     PASS");
-    io::println("  context_switch (save+restore):  PASS");
-}

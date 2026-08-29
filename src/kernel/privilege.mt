@@ -8,11 +8,32 @@
 
 use std::io;
 
+// The one `priv_name`, 30 August 2026. Three kernel modules defined this
+// byte-identically -- kernel/panic.mt, mm/vmem.mt and this one's own int-typed
+// variant (now `priv_rail_name`) -- and the three userspace programs define it
+// a fourth and fifth time, which is fine: they are separate programs and the
+// merge does not reach them.
+//
+// It lives here because naming a privilege level is what this module is for.
+fn priv_name(p: trit) -> str {
+    tif p {
+        + => return "KERNEL(+1)",
+        0 => return "SERVICE(0)",
+        - => return "USER(-1)",
+    }
+}
+
+
 // ---------------------------------------------------------------------------
 // Privilege level encoding as int:  +1=KERNEL, 0=SERVICE, -1=USER
 // ---------------------------------------------------------------------------
 
-fn priv_name(p: int) -> str {
+// Renamed from `priv_name` in the 30 Aug merge. This one takes an `int` and
+// names the RAIL a privilege level sits on (VDD/GND/VSS); the `trit`-typed
+// `priv_name` that kernel/panic.mt and mm/vmem.mt both carried is the one
+// that kept the name, because a privilege level IS a trit and taking an int
+// is this function's own concession to the status register.
+fn priv_rail_name(p: int) -> str {
     if p > 0 { return "KERNEL (+1) [VDD rail]"; }
     elif p < 0 { return "USER   (-1) [VSS rail]"; }
     else { return "SERVICE (0) [GND rail]"; }
@@ -32,9 +53,9 @@ fn set_privilege(current_priv: int, new_level: int) -> int {
     if current_priv > 0 {
         // KERNEL authorised
         io::print("  set_privilege: KERNEL authorised -> ");
-        io::println(priv_name(new_level));
+        io::println(priv_rail_name(new_level));
         io::print("  STATUS[26..25] written: ");
-        io::println(priv_name(new_level));
+        io::println(priv_rail_name(new_level));
         return new_level;
     } else {
         io::println("  set_privilege: PRIVILEGE FAULT — only KERNEL can call set_privilege");
@@ -55,9 +76,9 @@ fn priv_downgrade_self(current_priv: int, new_level: int) -> int {
         return current_priv;
     }
     io::print("  priv_downgrade_self: voluntary drop -> ");
-    io::println(priv_name(new_level));
+    io::println(priv_rail_name(new_level));
     io::print("  STATUS[26..25] written: ");
-    io::println(priv_name(new_level));
+    io::println(priv_rail_name(new_level));
     return new_level;
 }
 
@@ -79,9 +100,9 @@ fn privilege_fault_handler(pc: int) {
 
 fn sys_priv_set(current_priv: int, requested: int) -> int {
     io::print("[SYS_PRIV_SET] current=");
-    io::print(priv_name(current_priv));
+    io::print(priv_rail_name(current_priv));
     io::print("  requested=");
-    io::println(priv_name(requested));
+    io::println(priv_rail_name(requested));
 
     let ct = int_to_trit(current_priv);
     tif ct {
@@ -112,7 +133,7 @@ fn sys_priv_set(current_priv: int, requested: int) -> int {
         - => {
             // USER cannot escalate
             io::print("  USER cannot escalate to ");
-            io::print(priv_name(requested));
+            io::print(priv_rail_name(requested));
             io::println(" — FAULT");
             privilege_fault_handler(0);
             return current_priv;
@@ -124,7 +145,12 @@ fn sys_priv_set(current_priv: int, requested: int) -> int {
 // Signed virtual address enforcement (Claim 9)
 // ---------------------------------------------------------------------------
 
-fn check_address_privilege(addr: int, current_priv: int) -> bool {
+// Renamed from `check_address_privilege` in the 30 Aug merge. mm/vmem.mt has
+// a function of that name which asks a THREE-argument question (addr,
+// required, current) in trits; this one asks a two-argument one in ints and
+// belongs to the status-register view of privilege rather than the memory
+// map's. Two questions, not two copies.
+fn priv_check_address(addr: int, current_priv: int) -> bool {
     // MST of addr = sign(addr)
     let mst = int_to_trit(addr);
 
@@ -133,7 +159,7 @@ fn check_address_privilege(addr: int, current_priv: int) -> bool {
     io::print(" MST=");
     io::print_trit(mst);
     io::print(" current_priv=");
-    io::print(priv_name(current_priv));
+    io::print(priv_rail_name(current_priv));
 
     tif mst {
         + => {
@@ -160,81 +186,3 @@ fn check_address_privilege(addr: int, current_priv: int) -> bool {
 // ---------------------------------------------------------------------------
 // main: demonstrate privilege transitions and address enforcement
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS Privilege Management Demo ===");
-    io::println("Claim 3: Three-level privilege KERNEL/SERVICE/USER");
-    io::println("Claim 8: Three-rail substrate VDD/GND/VSS");
-    io::println("Claim 9: Signed virtual address enforcement");
-    io::println("");
-
-    // Track privilege as int: 1=KERNEL, 0=SERVICE, -1=USER
-    let mut priv: int = 1;   // start at KERNEL
-
-    io::print("Initial: ");
-    io::println(priv_name(priv));
-    io::println("");
-
-    // --- Transition 1: KERNEL -> SERVICE ---
-    io::println("--- Transition 1: KERNEL -> SERVICE ---");
-    priv = sys_priv_set(priv, 0);
-    io::print("  current: ");
-    io::println(priv_name(priv));
-    io::println("");
-
-    // --- Transition 2: SERVICE -> USER ---
-    io::println("--- Transition 2: SERVICE -> USER ---");
-    priv = sys_priv_set(priv, -1);
-    io::print("  current: ");
-    io::println(priv_name(priv));
-    io::println("");
-
-    // --- Transition 3: USER -> KERNEL (illegal escalation) ---
-    io::println("--- Transition 3: USER -> KERNEL (illegal escalation) ---");
-    priv = sys_priv_set(priv, 1);
-    io::print("  current (unchanged): ");
-    io::println(priv_name(priv));
-    io::println("");
-
-    // --- Transition 4: USER -> SERVICE (illegal escalation) ---
-    io::println("--- Transition 4: USER -> SERVICE (illegal escalation) ---");
-    priv = sys_priv_set(priv, 0);
-    io::print("  current (unchanged): ");
-    io::println(priv_name(priv));
-    io::println("");
-
-    // --- Reset to KERNEL for address checks ---
-    priv = 1;
-    io::println("--- Reset to KERNEL ---");
-
-    // --- Signed virtual address enforcement ---
-    io::println("");
-    io::println("--- Virtual Address Enforcement (Claim 9) ---");
-    io::println("Addresses: MST=+1 kernel-space, MST=0 shared, MST=-1 user");
-    io::println("");
-
-    io::println("KERNEL priv accessing kernel-space addr (+):");
-    let _ = check_address_privilege(1000000, 1);
-
-    io::println("SERVICE priv accessing kernel-space addr (+):");
-    let ok2 = check_address_privilege(1000000, 0);
-    if !ok2 { privilege_fault_handler(0); }
-
-    io::println("USER priv accessing kernel-space addr (+):");
-    let ok3 = check_address_privilege(1000000, -1);
-    if !ok3 { privilege_fault_handler(0); }
-
-    io::println("");
-    io::println("USER priv accessing shared-space addr (0=0):");
-    let _ = check_address_privilege(0, -1);
-
-    io::println("USER priv accessing user-space addr (-):");
-    let _ = check_address_privilege(-1000, -1);
-
-    io::println("");
-    io::println("=== Privilege claims verified ===");
-    io::println("  KERNEL->SERVICE->USER transitions:   PASS");
-    io::println("  USER escalation blocked (FAULT):     PASS");
-    io::println("  Kernel-space addr enforced:          PASS");
-    io::println("  Three-rail VDD/GND/VSS substrate:    PASS");
-}

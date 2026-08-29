@@ -229,7 +229,60 @@ single `.t3b` beside them, which is the artefact set testifying to it. The new
 `studioMani/build.sh` therefore has the T3 target **off by default** behind
 `WITH_T3=1`, and says why in its header.
 
-### 3.5 The shape shared by all four
+### 3.5 A FIFTH mechanism, found 30 August 2026, and it is a different KIND
+
+The four above are all *a name in one registry that no other registry defines*.
+This one is a **type**, both registries agree the name exists, and Phase 0 —
+which closed all four of the others — could never have found it.
+
+```manit
+struct S { pub sel: int, pub a: trit, pub b: trit }
+let p = if s.sel == 0 { s.a } else { s.b };
+```
+
+```
+check:        OK — no error, no warning
+--verify-ssa: 0 violations, after lowering AND after optimisation
+t3:           builds, runs, prints "+"                      <- correct
+llvm:         %t12 = phi i8 [ %t9, %if_then0 ], [ %t11, %if_else1 ]
+              error: '%t9' defined with type 'i64' but expected 'i8'
+```
+
+A struct field is a machine-word **slot**, so reading a `trit` field yields an
+`i64`, while the phi is typed from the source *expression* — `trit`, i8. Every
+other construct reconciles the two at the use; a phi cannot, because LLVM
+requires an incoming value to be available in the *predecessor* block.
+
+**It is a backend divergence in which T3 — the eventual target — is the correct
+one**, so a parity failure would have pointed at the wrong backend. Parity
+would not have fired anyway: it runs 17 maniTC examples and none of them reads
+a sub-word struct field in a branch expression.
+
+Fixed in maniTC as **report.txt P91**, at the definition rather than the phi
+(the shape P13/P46 already established). Two live kernel modules —
+`kernel/interrupt.mt` and `security/capability.mt` — were unbuildable on LLVM
+because of it. See §3.6 for why nobody knew.
+
+### 3.6 And the reason nobody knew: NOTHING COMPILED `src/`
+
+Not `build.sh` (which built the root `thatteos.mt` only), not
+`userspace/build.sh`, not `.github/workflows/ci.yml`, not `tests/test_all.sh`.
+**Twenty-six kernel modules and twelve `tests/*.mt` — about 9,000 lines — that
+no instrument in this repository ever touched.**
+
+Compiling all 41 by hand on 30 August gave **39 built, 2 failed**. One of the
+two failures is `security/capability.mt`, which is the subject of commit
+`873a0db` ("security(capability): pin the attenuate/resolve composition
+order"). **A commit landed on a module that did not compile, and the repository
+had no way to say so.**
+
+This is §5's table taken one step further than that table takes it. Those rows
+ask what each instrument is blind to *within* what it measures. This is a body
+of code that was outside every denominator, so no instrument was blind to it —
+none of them was pointed at it at all. **Fixed by `build.sh` step 1**, which
+builds the kernel on both backends, and by the `--verify-ssa` gate now in CI.
+
+### 3.7 The shape shared by all four
 
 In every case the analyzer holds a name the code generator cannot honour, and
 nothing compares the two. report.txt P60 already wrote the remedy for its own
@@ -249,10 +302,28 @@ person and are least reliable in Phase 6.
 
 ### Phase 0 — Close the check-vs-link gap *(compiler work, in maniTC)*
 
+> **DONE, 29 August 2026 — all four items.** report.txt **P85** (0.1 + 0.2),
+> **P86** (0.3), **P87** (0.4). Measured against subject
+> `manitc-phase0-final` sha `2a62f72bc529c679` with control `8ad91ec361a0e8d0`
+> built from the same tree: 744 tests / 0 / 2, 0 warnings; parity 17/17 on six
+> flag combinations; thatteOS 61/61 both halves; studioMani four binaries at
+> byte-identical sizes; `--verify-ssa` 0 over 147 files; R5 0 of 327 repo and
+> 2 of 1,147 corpus, both `A=0 B=1` and both programs that did not link.
+>
+> **Two of the four items below state their premise wrongly, and the
+> corrections are the finding rather than a footnote** — see the inline notes
+> on 0.1 and 0.4.
+
 Nothing downstream is trustworthy until a clean `check` predicts a link. Four
 items, smallest first.
 
-**0.1 — Delete or implement the five orphan builtins.** *(~0.5 d)*
+**0.1 — Delete or implement the ~~five~~ SEVEN orphan builtins.** *(~0.5 d)*
+**DONE.** *The population was five by reading and **seven** by running: `abs`
+and `sqrt` are orphans too, on the same mechanism, and they are the names a
+programmer reaches for first. P70's rule, a second time. Deleting was not
+sufficient on its own — with the entries merely gone, `abs` was answered
+**"did you mean 'main'?"**, so `stdlib_expand::qualified_spellings` now does an
+exact tail match against the stdlib text the binary carries.*
 Either drop the five entries from `register_builtins` so the flat spelling
 becomes an honest "unknown identifier — did you mean `str::from_int`?" (which is
 already the diagnostic for `str_to_lower`, and it is a good one), or make the
@@ -262,6 +333,12 @@ that table gives the reason: *"a static entry here would be a second source of
 truth that can drift from the stdlib"* — it drifted for the five that were left.
 
 **0.2 — A registry test, in the shape P60 already established.** *(~1 d)*
+**DONE** — `member_list_tests::every_registered_flat_builtin_is_linkable`,
+verified red with 0.1 reverted. *It asserts LLVM-linkability only, and the
+reason is a number this plan understates: **ninety** registered builtins link
+on LLVM and have no T3ISA syscall, not the `gui_*` surface alone — also
+`fs_*` (13), `io_*` (7), `terminal_*` (4), `env_*` (3), `path_*` (3) and one
+each of `net_*`, `process_*`, `shell_*`. That is §3.4's real size.*
 Assert that every name in `register_builtins` is reachable at link time on both
 backends: defined in `runtime/*.c`, or intercepted by an emitter, or resolvable
 as a stdlib module function whose module the name pulls in. Discriminate
@@ -269,7 +346,11 @@ mechanically, not by a list. With 0.1 reverted the test must go red — verify
 that, or the test is measuring nothing. This is the one item that stops §3.1
 recurring.
 
-**0.3 — Diagnose the mangled-name collision.** *(~1 d)*
+**0.3 — Diagnose the mangled-name collision.** *(~1 d)* **DONE** — lint
+`colliding-stdlib-symbol`. *Keyed on the EXPANSION, not the name, and one
+shipped file is why: `manitc/tests/05_ternary_types.mt` declares `fn trit_abs`
+against `trit::abs` and links today, because it never references `trit::`. A
+check on the name would reject working code.*
 When a user's top-level function name equals the mangled name of a stdlib
 function that will be emitted, refuse it at the declaration, naming both and the
 remedy — the shape report.txt **P70** used for reserved type names, including
@@ -278,7 +359,15 @@ exactly restores today's behaviour). Note P70's finding while doing it: **probe
 both spellings of every name**; its recorded population of nine measured
 fifteen.
 
-**0.4 — Make `use` honest.** *(~0.5 d, and it unblocks Phase 1)*
+**0.4 — Make `use` honest.** *(~0.5 d, and it unblocks Phase 1)* **DONE** —
+lint `unlinkable-user-module`. **But this item names the wrong case.**
+*`use unknown_module;` was ALREADY an error (`cannot load module …`, rc=1). The
+silent case is the opposite: a module that EXISTS, whose signatures register
+and whose bodies are dropped. A plan item aimed at the failure that is loud,
+while the quiet one wears the same words. A second mechanism was found with
+it: a user-module STRUCT runs correctly on T3 and makes LLVM emit
+`%struct.lib_b::Point`, which is not a legal unquoted identifier, so clang
+rejects the module outright.*
 Until cross-file bodies exist, `use unknown_module;` followed by a call into it
 must be an **error at check time**, not a link failure. This is the cheap half
 of §3.3 and it is worth doing on its own: it converts a silent failure into a
@@ -291,6 +380,56 @@ diagnostic while the expensive half is designed.
 > the denominator per binary (report.txt P70's R5-a/R5-b split).
 
 ### Phase 1 — One kernel, not twenty-nine demos *(~8–12 d)*
+
+> **DONE, 30 August 2026 — 1.1 through 1.4.** The kernel is one program: 26
+> modules merged from `src/kernel.manifest`, **353 functions, 35 structs, zero
+> warnings**, building and running on **both** backends with **byte-identical
+> output**. A second program, `build/kernel_demos` (51 modules), carries the 25
+> module demonstrations and **37 assertions that used to be discarded return
+> values**. `tests/test_all.sh` is **96/96** (from 61). Route (b) as
+> recommended, and (a) is still the destination.
+>
+> **Two of this section's own claims were stale and re-probing caught both** —
+> which is §7's third risk arriving on schedule:
+>
+> * **1.3 says "There is no `kernel_main`."** There is, and there always was:
+>   `boot.mt` has had `fn kernel_main()` with `fn main() { kernel_main(); }`
+>   under it. What was actually wrong is subtler and worse — `kernel_main`
+>   called **boot.mt's own private stubs** of `interrupt_init`, `process_init`,
+>   `vmem_init`, `syscall_init` and `tty_init`, not the real modules'. The
+>   entry point existed; it just did not reach the kernel.
+> * **Phase 3 says `sys_open` "allocates `new_fd` and then early-returns on a
+>   full table, discarding it".** Both copies of `sys_open` put the guard above
+>   the allocation already. Struck.
+>
+> **And a third thing this section did not know to ask for.** The kernel could
+> not be built for its own target at all: `context_save` took **13** parameters
+> and `context_switch` **15**, against a T3 convention that passes arguments in
+> R1–R8 and has no stack argument area. LLVM has no such limit, so those
+> signatures compiled and ran on the hosted backend for months while **the two
+> backends disagreed about whether `kernel/context.mt` was legal**. Both now
+> take a `RegFile` struct — which is the honest model anyway, since r0..r8 are
+> one thing on real hardware. **The kernel builds for T3ISA.**
+>
+> **The Phase 6 measurement is therefore available early, and getting it right
+> took crossing the ceiling first.** The kernel's T3 image first measured
+> **56,421 words of 60,000** — 94 % full. Then the in-kernel assertions were
+> added and it became **60,621, and the assembler refused it**. Moving the
+> ENTRY POINT into its own module changed nothing, which is the finding:
+> **the T3 backend emits every function in the translation unit whether it is
+> reachable or not**, so the 25 demos were in the image the whole time even
+> though only `kernel_main` ran. They had to leave the translation unit
+> entirely — `src/demos/` and a second manifest.
+>
+> **The real number is therefore 37,378 words — 62 % of the ceiling, 22,622
+> words of headroom.** Nineteen thousand words of that first measurement were
+> demonstrations. `build.sh` prints it every build and warns above 54,000.
+>
+> **And a stale artefact hid the crossing.** The build failed and left the
+> previous `build/kernel.t3b` on disk, and `tests/test_all.sh` reported
+> **96/96 against it**. A failed build left a passing test. The suite now
+> refuses to run when an artefact is older than the source it claims to be
+> built from, and that guard was verified by mutation.
 
 This is the largest single structural change and everything in §5–§6 of
 `WORKINGS_ANALYSIS.md` waits on it.
@@ -314,6 +453,21 @@ immediately and makes the kernel a single program *this week*; (a) then replaces
 the manifest without changing any source. Doing (a) first means deduplicating
 against a compiler feature that does not exist yet.
 
+> **DONE — (b), 30 August 2026.** `src/kernel.manifest` lists the 26 modules in
+> dependency order; `tools/merge_modules.py` concatenates them **and writes a
+> line map**, so a diagnostic in the merged file can be traced back:
+> `python3 tools/merge_modules.py --locate 3805 build/kernel.mt` →
+> `src/mm/vmem.mt:29`. A bare `cat` would have been one line and would have
+> thrown away the only thing that made the modules worth keeping apart.
+>
+> **The premise was re-measured, not read**: `use lib_a;` still exits 0 at
+> `check` and then fails to link on *both* backends, on the release binary, on
+> 30 August. (b) is still the only route.
+>
+> **When (a) lands, this is what changes**: `src/kernel.manifest` and
+> `tools/merge_modules.py` are deleted and the modules gain `use` lines. No
+> module source moves. That was the point of doing (b) first.
+
 **1.2 — Deduplicate.** One `PCB`, one `Inode`, one `TritFS`, one `priv_name`,
 one `state_name`, one `perm_name`, one `make_pcb`, one `vmem_init`. Under (b)
 the compiler names every collision for you, one build at a time. **Diff the
@@ -321,14 +475,69 @@ duplicates before deleting** — `boot.mt`'s `PCB` and `scheduler.mt`'s have
 different fields, so the merge is a design decision at each site, not a
 deletion.
 
-**1.3 — `kernel_main`.** All 29 files in `src/` carry a `fn main`; three of them
+> **DONE, 30 August 2026 — 43 collisions, and the warning above was the right
+> one.** A census first (kind, name, and a whitespace/comment-normalised hash
+> of each body) split them into **14 byte-identical** — safe folds — and **29
+> that differed**, which is where the design decisions were. The 29 fell into
+> four families and each family got a different answer:
+>
+> * **`boot.mt` re-implemented what it boots** (8 names). It carried private
+>   stubs of `interrupt_init`, `process_init`, `syscall_init`, `vmem_init` and
+>   `tty_init`, plus its own `PCB`, `make_pcb`, `state_name`, `get_primary`.
+>   Deleted; `kernel_main` calls the real modules. Four of the five inits had
+>   an identical signature so those call sites did not move. **boot's `PCB` and
+>   `make_pcb` were never referenced by anything** — declared and dead.
+> * **One name, several concepts** — renamed, not merged. `perm_name` was
+>   defined five times and meant **three different things**: the fs layer's
+>   permission bits (`"rwx"`), `kernel/tmin2.mt`'s memory-zone class, and
+>   `mm/pgtable.mt`'s two-argument page-fault *action*. Now `perm_name`,
+>   `zone_name`, `pgfault_action`. Likewise `check_address_privilege` (an int
+>   pair vs a trit triple → `priv_check_address` and the original), and
+>   `empty_entry`/`print_entry`, which were a **log record** in `kernel/klog.mt`
+>   and a **photon grant** in `security/photon_cap.mt` sharing only the English
+>   word "entry" → `klog_*` and `photon_*`.
+> * **`PCB` was a UNION, not a copy.** The three definitions held *different
+>   fields*: `kernel/process.mt` knew a process's identity and privilege,
+>   `kernel/scheduler.mt` knew its priority, age and quantum. Choosing either
+>   would have silently discarded three fields of the other, so the merged PCB
+>   carries all ten — and every literal that built one was rewritten as
+>   `PCB { ..p, ... }`, because the union broke all seven spelled-out literals
+>   at once and an update expression cannot forget a field.
+> * **`fs/tritfs.mt` had 28 declarations and NOT ONE of its own.** Every name
+>   in it also existed in `inode.mt`, `fdtable.mt` or `perms.mt`. It was not a
+>   layer above the three, it was a copy of all three taken before they were
+>   split out. **The copies had drifted and not harmlessly**: its `create_file`
+>   and `sys_mkdir` wrote a new inode into slot 6, 7, or — for every other
+>   value of `next_ino`, including 0 through 5 — **slot 8**. `inode.mt`'s
+>   delegate to `inode_set`, which handles all nine. 27 declarations deleted;
+>   the file keeps `tritfs_demo`, which is what it uniquely had.
+>
+> **Every deletion left a note saying where the declaration went.** Deleting
+> silently is how a reader later concludes the module never had the function.
+
+**1.3 — `kernel_main`.** **DONE — but see the banner above: `kernel_main`
+already existed.** The 25 non-boot module `main`s became `tmin2_demo()`,
+`klog_demo()`, … — *renamed, never deleted*, because those 25 demos are the
+only exercise most of this code has ever had, and deleting them to make the
+merge compile would have bought one program at the price of the only evidence
+the parts work. All 29 files in `src/` carry a `fn main`; three of them
 (`userspace/init`, `login`, `shell`) should keep one. Strip the other 26, keep one
 in `boot.mt`. It calls `interrupt_init`, `process_init`, `vmem_init`,
 `syscall_init`, `tty_init`, `tritfs_init`, `timer_init`, then `scheduler_run`.
 Each module's demo `main` becomes a `*_demo()` the test suite calls, so the
 demos survive as tests rather than being deleted.
 
-**1.4 — Build the three orphaned userspace programs.** `security_demo`,
+**1.4 — Build the three orphaned userspace programs.** **DONE.** *All three
+compile, link and run; `PROGRAMS` is 13 and `tests/test_all.sh` gained 22 rows
+for them. The one-line fix was not taken on its own, because it repairs the
+instance and leaves the mechanism: `userspace/build.sh` now **checks its list
+against the directory** in both directions, and `tests/test_all.sh` **refuses
+to run a partial suite** rather than skipping — its `[ -x ]` guards silently
+dropped 34 of 61 checks and printed ALL TESTS PASSED. All three guards were
+verified by mutation. Two of the three programs also computed a verdict and
+threw it away — `stream_demo` bound three `stream_read` results it never read,
+`security_demo` captured `ring_before` to prove a denied escalation left the
+ring alone and never compared. Both now state the claim beside the answer.* `security_demo`,
 `stream_demo` and `sysinfo` exist, **all three compile and link cleanly today**,
 and `userspace/build.sh`'s `PROGRAMS` list simply never named them. One line.
 Then add their tests — and note the shape, because it is P42's: *a list that
@@ -434,16 +643,21 @@ findings were about instruments rather than code.
 | `tests/test_all.sh` — 61 checks | curated | anything with no test; **and 34 of the 61 vanish silently if `userspace/bin/` is empty** |
 | `manitc check` over the tree | every file | **linkability** — all four mechanisms in §3 |
 | Cross-backend parity | 17 maniTC examples | a shared lowering shares its bugs (report.txt P58: parity was blind to four of ten probe findings) |
-| `--verify-ssa` | every `.mt` | operand types (P46), and it is **not currently run over thatteOS in CI** although running it over thatteOS is what found P37 |
+| `--verify-ssa` | every `.mt` | ~~operand types (P46)~~ — **it does not check operand types at all**, and 30 Aug proved it: it reported **0 violations twice** on a module clang then refused for a phi whose operands were the wrong width (§3.5). It verifies SSA *form* — dominance, multiply-defined, dangling targets, phi edges. **Now run in CI over all 27 files**, which is worth doing for what it does check (it found P37); just not for this |
 
 Three additions, cheap and each closing a named gap:
 
-1. **Run `--verify-ssa` over every `.mt` in this repository, in CI.** It found
-   P37 — five files computing a wrong answer that 638 tests and a 17/17 parity
-   matrix had passed.
-2. **Assert a link, not a check.** Every `.mt` in `src/`, `userspace/` and
-   `studioMani/` should be compiled to a binary in CI. §3 is entirely invisible
-   to a check-only gate.
+1. ~~**Run `--verify-ssa` over every `.mt` in this repository, in CI.**~~
+   **DONE 30 Aug** — `.github/workflows/ci.yml`, 27 files, 0 violations.
+2. ~~**Assert a link, not a check.**~~ **DONE 30 Aug for `src/` and
+   `userspace/`**, which is where it mattered: `build.sh` builds the merged
+   kernel on both backends and `userspace/build.sh` builds all 13 programs, so
+   CI now links what it used to only check. `studioMani/` remains hosted-only
+   by §3.4. **Note what this cost to learn**: the per-module sweep that found
+   the two broken files is no longer a valid instrument, because the modules
+   are no longer standalone programs — they have no `main` and they call each
+   other. The unit of compilation is `build/kernel.mt`, and that is what CI
+   builds.
 3. **Print the claim beside the answer.** `tests/expected/` in maniTC gets its
    value from every line stating its own claim (`PASS mul: 6*7=42`) rather than
    being captured output. It is the cheap design that makes a pinned expectation

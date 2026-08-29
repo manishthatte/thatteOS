@@ -43,18 +43,17 @@ fn state_name(s: int) -> str {
 // PCB with priority and age
 // ---------------------------------------------------------------------------
 
-struct PCB {
-    pub pid: int,
-    pub state: int,
-    pub pc: int,
-    pub sp: int,
-    pub priority: trit,    // HIGH(+) NORMAL(0) LOW(-)
-    pub age: int,          // ticks since last dispatch (starvation counter)
-    pub quantum_used: int, // ticks used in current quantum
-}
+// `PCB` moved to kernel/process.mt, 30 August 2026, as the UNION of the two
+// (see the note there). This module's three scheduling fields -- priority, age,
+// quantum_used -- went with it, so everything below reads them unchanged.
 
-fn make_pcb(pid: int, state: int, pri: trit) -> PCB {
+// Renamed from `make_pcb` in the 30 Aug merge, and it is a different
+// constructor rather than a copy of process.mt's: that one takes a privilege
+// level and a parent, this one takes a PRIORITY, which is the field the
+// scheduler cares about. Both fill the whole union now.
+fn make_pcb_prio(pid: int, state: int, pri: trit) -> PCB {
     return PCB { pid: pid, state: state, pc: 0, sp: 0,
+                 privilege: 0, page_table: 0, parent_pid: 0,
                  priority: pri, age: 0, quantum_used: 0 };
 }
 
@@ -131,15 +130,13 @@ fn check_starvation(p: PCB) -> PCB {
                 io::print("    [STARVATION] PID=");
                 io::print_int(p.pid);
                 io::println(" LOW->NORMAL after 9 idle ticks");
-                return PCB { pid: p.pid, state: p.state, pc: p.pc, sp: p.sp,
-                             priority: 0, age: 0, quantum_used: 0 };
+                return PCB { ..p, priority: 0, age: 0, quantum_used: 0 };
             }
             0 => {
                 io::print("    [STARVATION] PID=");
                 io::print_int(p.pid);
                 io::println(" NORMAL->HIGH after 9 idle ticks");
-                return PCB { pid: p.pid, state: p.state, pc: p.pc, sp: p.sp,
-                             priority: +, age: 0, quantum_used: 0 };
+                return PCB { ..p, priority: +, age: 0, quantum_used: 0 };
             }
             + => return p,
         }
@@ -152,8 +149,7 @@ fn check_starvation(p: PCB) -> PCB {
 // ---------------------------------------------------------------------------
 
 fn age_tick(p: PCB) -> PCB {
-    return PCB { pid: p.pid, state: p.state, pc: p.pc, sp: p.sp,
-                 priority: p.priority, age: p.age + 1, quantum_used: p.quantum_used };
+    return PCB { ..p, age: p.age + 1 };
 }
 
 // ---------------------------------------------------------------------------
@@ -186,14 +182,12 @@ fn schedule_pcb(idx: int, p: PCB) -> PCB {
                 io::print_int(p2.pid);
                 io::println(" used 3 ticks — preempted, quantum reset");
                 io::println("");
-                return PCB { pid: p2.pid, state: p2.state, pc: p2.pc, sp: p2.sp,
-                             priority: p2.priority, age: p2.age, quantum_used: 0 };
+                return PCB { ..p2, quantum_used: 0 };
             }
             dispatch_active(p2);
             io::println("");
             // Dispatched: age resets, one quantum tick consumed
-            return PCB { pid: p2.pid, state: p2.state, pc: p2.pc, sp: p2.sp,
-                         priority: p2.priority, age: 0, quantum_used: p2.quantum_used + 1 };
+            return PCB { ..p2, age: 0, quantum_used: p2.quantum_used + 1 };
         }
         0 => {
             io::println("    [DORMANT]");
@@ -222,15 +216,15 @@ fn scheduler_run() {
 
     // Process table: 9 PCBs with varied states and priorities
     let mut pcbs: [PCB] = [
-        make_pcb(0, 3, +),   // idle, READY, HIGH
-        make_pcb(1, 4, 0),   // init, EXECUTING, NORMAL
-        make_pcb(2, 2, -),   // worker, YIELDED, LOW
-        make_pcb(3, 0, 0),   // IO_WAIT, NORMAL
-        make_pcb(4, -1, +),  // MSG_WAIT, HIGH
-        make_pcb(5, -2, -),  // SLEEP, LOW
-        make_pcb(6, -3, 0),  // EXITED, NORMAL
-        make_pcb(7, -4, -),  // KILLED, LOW
-        make_pcb(8, -5, +),  // FAULTED, HIGH
+        make_pcb_prio(0, 3, +),   // idle, READY, HIGH
+        make_pcb_prio(1, 4, 0),   // init, EXECUTING, NORMAL
+        make_pcb_prio(2, 2, -),   // worker, YIELDED, LOW
+        make_pcb_prio(3, 0, 0),   // IO_WAIT, NORMAL
+        make_pcb_prio(4, -1, +),  // MSG_WAIT, HIGH
+        make_pcb_prio(5, -2, -),  // SLEEP, LOW
+        make_pcb_prio(6, -3, 0),  // EXITED, NORMAL
+        make_pcb_prio(7, -4, -),  // KILLED, LOW
+        make_pcb_prio(8, -5, +),  // FAULTED, HIGH
     ];
 
     // --- Aging: a scheduler tick elapsed for every live process ---
@@ -306,36 +300,3 @@ fn process_init() {
 // ---------------------------------------------------------------------------
 // starvation demo
 // ---------------------------------------------------------------------------
-
-fn starvation_demo() {
-    io::println("[SCHED] starvation prevention demo:");
-    let starved = PCB { pid: 2, state: 3, pc: 0, sp: 0,
-                        priority: -, age: 10, quantum_used: 0 };
-    io::print("  PID=2 state=READY pri=LOW age=");
-    io::println_int(starved.age);
-    let promoted = check_starvation(starved);
-    io::print("  after check: pri=");
-    io::println(priority_name(promoted.priority));
-}
-
-fn main() {
-    io::println("=== THATTE-OS Enhanced Scheduler Demo ===");
-    io::println("Claim 1: Process state + TBRANCH dispatch");
-    io::println("Enhanced: priority + quantum + starvation prevention");
-    io::println("");
-
-    process_init();
-    io::println("");
-
-    scheduler_run();
-    io::println("");
-
-    starvation_demo();
-    io::println("");
-
-    io::println("=== Enhanced scheduler claims verified ===");
-    io::println("  TBRANCH dispatches: ACTIVE(+) DORMANT(0) TERMINAL(-): PASS");
-    io::println("  Priority ordering: HIGH -> NORMAL -> LOW:              PASS");
-    io::println("  Quantum (3 ticks):                                     PASS");
-    io::println("  Starvation prevention (promote after 9 ticks):         PASS");
-}

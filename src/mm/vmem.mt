@@ -25,13 +25,8 @@ fn region_name(mst: trit) -> str {
     }
 }
 
-fn priv_name(p: trit) -> str {
-    tif p {
-        + => return "KERNEL(+1)",
-        0 => return "SERVICE(0)",
-        - => return "USER(-1)",
-    }
-}
+// `priv_name` moved to kernel/privilege.mt in the 30 Aug merge -- three
+// kernel modules carried a byte-identical copy.
 
 // ---------------------------------------------------------------------------
 // vmem_init: map the three address regions
@@ -128,52 +123,3 @@ fn address_fault_handler(addr: int) {
 // ---------------------------------------------------------------------------
 // main: demonstrate virtual memory layout and address checks
 // ---------------------------------------------------------------------------
-
-fn main() {
-    io::println("=== THATTE-OS Virtual Memory Demo ===");
-    io::println("Claim 2:  Virtual memory + conditional permissions");
-    io::println("Claim 9:  Signed virtual address enforcement");
-    io::println("");
-
-    vmem_init();
-    io::println("");
-
-    io::println("--- Address Privilege Checks ---");
-    io::println("");
-
-    // Kernel-space addresses (positive in 27-trit)
-    io::println("Test 1: KERNEL accesses kernel-space addr (+1000000):");
-    let ok1 = check_address_privilege(1000000, +, +);
-    io::println("");
-
-    io::println("Test 2: SERVICE accesses kernel-space addr (+1000000):");
-    let ok2 = check_address_privilege(1000000, +, 0);
-    if !ok2 {
-        address_fault_handler(1000000);
-    }
-    io::println("");
-
-    io::println("Test 3: USER accesses kernel-space addr (+1000000):");
-    let ok3 = check_address_privilege(1000000, +, -);
-    if !ok3 {
-        address_fault_handler(1000000);
-    }
-    io::println("");
-
-    io::println("Test 4: USER accesses shared-space addr (0):");
-    let _ = check_address_privilege(0, 0, -);
-    io::println("");
-
-    io::println("Test 5: USER accesses user-space addr (-100):");
-    let _ = check_address_privilege(-100, -, -);
-    io::println("");
-
-    io::println("Test 6: SERVICE accesses user-space addr (-500):");
-    let _ = check_address_privilege(-500, -, 0);
-    io::println("");
-
-    io::println("=== Virtual memory claims verified ===");
-    io::println("  Signed-address space layout (MST-based): PASS");
-    io::println("  KERNEL-space gating:                     PASS");
-    io::println("  ADDRESS FAULT on unauthorised access:    PASS");
-}
