@@ -52,9 +52,19 @@ fn state_name(s: int) -> str {
 // level and a parent, this one takes a PRIORITY, which is the field the
 // scheduler cares about. Both fill the whole union now.
 fn make_pcb_prio(pid: int, state: int, pri: trit) -> PCB {
-    return PCB { pid: pid, state: state, pc: 0, sp: 0,
-                 privilege: 0, page_table: 0, parent_pid: 0,
-                 priority: pri, age: 0, quantum_used: 0 };
+    // Built by UPDATING process.mt's constructor rather than by spelling the
+    // fields out. The spelled-out form is what broke when PCB gained `caps` on
+    // 30 August 2026, and it was the last bare PCB literal in the kernel --
+    // sys_exec's comment already said why ("an update expression cannot forget
+    // a field") and this was the site still not taking the advice.
+    // privilege 0 = SERVICE, which is what the spelled-out version set, so the
+    // capability word comes out as service_caps and nothing moves.
+    // Built then MUTATED, not `PCB { ..make_pcb(..), priority: pri }`, which
+    // allocated a second PCB cell to change one field. Nine of those is 99
+    // heap words of 2,536 on T3.
+    let p = make_pcb(pid, state, 0, 0);
+    p.priority = pri;
+    return p;
 }
 
 fn priority_name(p: trit) -> str {
@@ -122,7 +132,20 @@ fn reap_process(p: PCB) {
 // check_starvation: promote LOW priority after 9 ticks
 // ---------------------------------------------------------------------------
 
-fn check_starvation(p: PCB) -> PCB {
+// MUTATES `p` rather than returning a promoted copy, 30 August 2026.
+//
+// This is a HEAP measurement, not a style change. A struct parameter in this
+// language is a mutable reference (measured on both backends), while
+// `PCB { ..p, .. }` genuinely copies -- and the T3 heap is 2,536 words with no
+// free (maniTC report.txt P63). When PCB gained its CapWord for §2.3 it roughly
+// doubled, to a ~11-word cell pointing at a ~10-word cap word, and this
+// function plus `age_tick` and `schedule_pcb` each copy-constructed one per
+// process per pass. Nine processes over three passes exhausted the heap during
+// boot and the T3 kernel trapped:
+//     TRAP: heap exhausted allocating 10 word(s) at 65533 (limit 65536)
+// The hosted backend never noticed, so this was a CROSS-BACKEND divergence
+// caught only by the suite's byte-identical row.
+fn check_starvation(p: PCB) {
     if p.age >= 9 {
         // Starvation detected — promote priority
         tif p.priority {
@@ -130,26 +153,29 @@ fn check_starvation(p: PCB) -> PCB {
                 io::print("    [STARVATION] PID=");
                 io::print_int(p.pid);
                 io::println(" LOW->NORMAL after 9 idle ticks");
-                return PCB { ..p, priority: 0, age: 0, quantum_used: 0 };
+                p.priority = 0;
+                p.age = 0;
+                p.quantum_used = 0;
             }
             0 => {
                 io::print("    [STARVATION] PID=");
                 io::print_int(p.pid);
                 io::println(" NORMAL->HIGH after 9 idle ticks");
-                return PCB { ..p, priority: +, age: 0, quantum_used: 0 };
+                p.priority = +;
+                p.age = 0;
+                p.quantum_used = 0;
             }
-            + => return p,
+            + => {}
         }
     }
-    return p;
 }
 
 // ---------------------------------------------------------------------------
 // age_tick: one scheduler tick has elapsed without dispatch — age the PCB
 // ---------------------------------------------------------------------------
 
-fn age_tick(p: PCB) -> PCB {
-    return PCB { ..p, age: p.age + 1 };
+fn age_tick(p: PCB) {
+    p.age = p.age + 1;
 }
 
 // ---------------------------------------------------------------------------
@@ -158,9 +184,17 @@ fn age_tick(p: PCB) -> PCB {
 // caller can write it back into the process table.
 // ---------------------------------------------------------------------------
 
-fn schedule_pcb(idx: int, p: PCB) -> PCB {
+// Returns true when the PCB was actually DISPATCHED, so the table can record
+// which slot is running. `ProcTable.current` was added in §2.0 and nothing set
+// it -- it read -1 for the life of the program, which is a field that describes
+// the running process and never knows one.
+fn schedule_pcb(idx: int, p: PCB) -> bool {
     let primary = get_primary(p.state);
-    let p2 = check_starvation(p);
+    // check_starvation mutates `p` now; there is no second binding, and that
+    // removes a genuine hazard as well as an allocation -- the old code held
+    // BOTH `p` and its promoted copy `p2` and then read `p.state`/`p.priority`
+    // from the stale one while reporting `p2.age`.
+    check_starvation(p);
     io::print("  PCB[");
     io::print_int(idx);
     io::print("] PID=");
@@ -170,73 +204,83 @@ fn schedule_pcb(idx: int, p: PCB) -> PCB {
     io::print(" pri=");
     io::print(priority_name(p.priority));
     io::print(" age=");
-    io::print_int(p2.age);
+    io::print_int(p.age);
     io::print(" primary=");
     io::println_trit(primary);
 
     tif primary {
         + => {
             io::println("    [ACTIVE]");
-            if p2.quantum_used >= 3 {
+            if p.quantum_used >= 3 {
                 io::print("    [QUANTUM] PID=");
-                io::print_int(p2.pid);
+                io::print_int(p.pid);
                 io::println(" used 3 ticks — preempted, quantum reset");
                 io::println("");
-                return PCB { ..p2, quantum_used: 0 };
+                p.quantum_used = 0;
+            } else {
+                dispatch_active(p);
+                io::println("");
+                // Dispatched: age resets, one quantum tick consumed
+                p.age = 0;
+                p.quantum_used = p.quantum_used + 1;
+                return true;
             }
-            dispatch_active(p2);
-            io::println("");
-            // Dispatched: age resets, one quantum tick consumed
-            return PCB { ..p2, age: 0, quantum_used: p2.quantum_used + 1 };
         }
         0 => {
             io::println("    [DORMANT]");
-            let _ = check_wakeup(p2);
+            let _ = check_wakeup(p);
             io::println("");
-            return p2;
         }
         - => {
             io::println("    [TERMINAL]");
-            reap_process(p2);
+            reap_process(p);
             io::println("");
-            return p2;
         }
     }
+    return false;
 }
 
 // ---------------------------------------------------------------------------
 // scheduler_run: main loop — priority-first, then TBRANCH state dispatch
 // ---------------------------------------------------------------------------
 
-fn scheduler_run() {
+// scheduler_run: one scheduling pass over THE process table.
+//
+// CHANGED 30 August 2026 -- ENHANCEMENT_PLAN §2.0. This function used to take
+// no arguments and return nothing, and to build its own nine-PCB table as a
+// LOCAL on every call: it aged that table, scheduled it, and discarded it when
+// it returned. Four sites in this kernel printed "-> scheduler_run() invoked"
+// and none of them called it, which was the honest choice while calling it
+// would have scheduled a table nobody else could see.
+//
+// It now takes the table. It MUTATES it in place rather than returning a copy,
+// for the three measured reasons set out above `struct ProcTable` in
+// kernel/process.mt -- chiefly that a struct parameter in this language IS a
+// mutable reference, so a returned "copy" would be a second name for the same
+// object.
+//
+// Free slots are skipped. The old local table was always full, so it never had
+// to ask; a real table has holes.
+fn scheduler_run(t: ProcTable) {
     io::println("[SCHED] scheduler_run: priority-aware scheduling pass");
     io::println("[SCHED] priority order: HIGH(+) -> NORMAL(0) -> LOW(-)");
     io::println("[SCHED] quantum: 3 ticks per process");
     io::println("");
 
-    // Process table: 9 PCBs with varied states and priorities
-    let mut pcbs: [PCB] = [
-        make_pcb_prio(0, 3, +),   // idle, READY, HIGH
-        make_pcb_prio(1, 4, 0),   // init, EXECUTING, NORMAL
-        make_pcb_prio(2, 2, -),   // worker, YIELDED, LOW
-        make_pcb_prio(3, 0, 0),   // IO_WAIT, NORMAL
-        make_pcb_prio(4, -1, +),  // MSG_WAIT, HIGH
-        make_pcb_prio(5, -2, -),  // SLEEP, LOW
-        make_pcb_prio(6, -3, 0),  // EXITED, NORMAL
-        make_pcb_prio(7, -4, -),  // KILLED, LOW
-        make_pcb_prio(8, -5, +),  // FAULTED, HIGH
-    ];
-
     // --- Aging: a scheduler tick elapsed for every live process ---
     // (dispatch below resets age to 0; terminal processes do not age)
+    //
+    // Every slot is read through `slot_at(t, i)` rather than bound to a local:
+    // `let p = slot_at(t, i);` inside a `while` is a move on each iteration and
+    // the borrow checker refuses it. Passing to a function does not move.
     let mut i = 0;
     while i < 9 {
-        let p = pcbs[i];
-        let pr = get_primary(p.state);
-        tif pr {
-            + => { pcbs[i] = age_tick(p); }
-            0 => { pcbs[i] = age_tick(p); }
-            - => {}
+        if !slot_is_free(slot_at(t, i)) {
+            tif get_primary(slot_at(t, i).state) {
+                + => { table_age(t, i); }
+                0 => { table_age(t, i); }
+                - => {}
+            }
         }
         i = i + 1;
     }
@@ -245,11 +289,12 @@ fn scheduler_run() {
     io::println("  === HIGH priority pass ===");
     i = 0;
     while i < 9 {
-        let p = pcbs[i];
-        tif p.priority {
-            + => { pcbs[i] = schedule_pcb(i, p); }
-            0 => {}
-            - => {}
+        if !slot_is_free(slot_at(t, i)) {
+            tif slot_at(t, i).priority {
+                + => { table_schedule(t, i); }
+                0 => {}
+                - => {}
+            }
         }
         i = i + 1;
     }
@@ -258,11 +303,12 @@ fn scheduler_run() {
     io::println("  === NORMAL priority pass ===");
     i = 0;
     while i < 9 {
-        let p = pcbs[i];
-        tif p.priority {
-            + => {}
-            0 => { pcbs[i] = schedule_pcb(i, p); }
-            - => {}
+        if !slot_is_free(slot_at(t, i)) {
+            tif slot_at(t, i).priority {
+                + => {}
+                0 => { table_schedule(t, i); }
+                - => {}
+            }
         }
         i = i + 1;
     }
@@ -271,11 +317,12 @@ fn scheduler_run() {
     io::println("  === LOW priority pass ===");
     i = 0;
     while i < 9 {
-        let p = pcbs[i];
-        tif p.priority {
-            + => {}
-            0 => {}
-            - => { pcbs[i] = schedule_pcb(i, p); }
+        if !slot_is_free(slot_at(t, i)) {
+            tif slot_at(t, i).priority {
+                + => {}
+                0 => {}
+                - => { table_schedule(t, i); }
+            }
         }
         i = i + 1;
     }
@@ -287,7 +334,11 @@ fn scheduler_run() {
 // process_init: initialise process table
 // ---------------------------------------------------------------------------
 
-fn process_init() {
+// process_init: describe the process model AND build the table.
+//
+// It returned nothing until 30 August 2026, so its first line -- "9-slot
+// process table initialised" -- was the only initialising it did. §2.0.
+fn process_init() -> ProcTable {
     io::println("[PROC] process_init: 9-slot process table initialised");
     io::println("  States:");
     io::println("    +4=EXECUTING  +3=READY  +2=YIELDED  (ACTIVE, sign=+1)");
@@ -295,6 +346,7 @@ fn process_init() {
     io::println("    -3=EXITED  -4=KILLED  -5=FAULTED    (TERMINAL, sign=-1)");
     io::println("  Priorities: HIGH(+) NORMAL(0) LOW(-)");
     io::println("  Quantum: 3 ticks | Starvation: promote after 9 idle ticks");
+    return proc_table_init();
 }
 
 // ---------------------------------------------------------------------------

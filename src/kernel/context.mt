@@ -155,6 +155,30 @@ fn context_bank_get(bank: ContextBank, pid: int) -> CPUContext {
     else { return bank.c8; }
 }
 
+// context_bank_put: store `ctx` in its own slot, MUTATING the bank.
+//
+// `context_bank_set` below rebuilds the whole nine-slot bank to change one
+// field, which allocates a CPUContext-sized copy every save. A struct is a
+// mutable reference in this language, so the copy was never needed, and on T3
+// the heap is 2,536 words with no free. Kept beside the original rather than
+// replacing it: `context_switch` reads the returned value in a chain.
+fn context_bank_put(bank: ContextBank, ctx: CPUContext) -> bool {
+    let pid = ctx.pid;
+    if pid < 0 || pid > 8 {
+        return false;
+    }
+    if pid == 0 { bank.c0 = ctx; }
+    elif pid == 1 { bank.c1 = ctx; }
+    elif pid == 2 { bank.c2 = ctx; }
+    elif pid == 3 { bank.c3 = ctx; }
+    elif pid == 4 { bank.c4 = ctx; }
+    elif pid == 5 { bank.c5 = ctx; }
+    elif pid == 6 { bank.c6 = ctx; }
+    elif pid == 7 { bank.c7 = ctx; }
+    else { bank.c8 = ctx; }
+    return true;
+}
+
 fn context_bank_set(bank: ContextBank, ctx: CPUContext) -> ContextBank {
     let pid = ctx.pid;
     if pid < 0 || pid > 8 {

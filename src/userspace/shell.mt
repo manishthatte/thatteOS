@@ -46,13 +46,14 @@ fn shell_init(priv_level: trit, user: str, pid: int) -> ShellState {
     };
 }
 
-fn priv_name(p: trit) -> str {
-    tif p {
-        + => return "KERNEL",
-        0 => return "SERVICE",
-        - => return "USER",
-    }
-}
+// `priv_name` REMOVED, 30 August 2026 — ENHANCEMENT_PLAN §4.
+//
+// kernel/privilege.mt already had one, and this file's copy answered "KERNEL"
+// where that one answers "KERNEL(+1)". They were free to drift because nothing
+// ever compiled them together: this module was in NEITHER manifest and was
+// built by nothing at all. Adding it to both manifests is what forced the
+// question, and the flat namespace is what asked it -- the seventh instance of
+// the six `priv_name`s Phase 1.2 deduplicated.
 
 // ---------------------------------------------------------------------------
 // Prompt display
@@ -92,16 +93,30 @@ fn cmd_help() {
     io::println("Trit values: + (positive), 0 (zero), - (negative)");
 }
 
-fn cmd_ps() {
-    io::println("  PID  STATE        PRI     NAME");
-    io::println("  ---  -----------  ------  --------");
-    io::println("    0  READY(+3)    HIGH    idle");
-    io::println("    1  EXECUTING    NORMAL  init");
-    io::println("    2  EXECUTING    NORMAL  shell");
-    io::println("    3  IO_WAIT(0)   LOW     worker");
-    io::println("    4  SLEEP(-2)    NORMAL  daemon");
-    io::println("  --- 5-8: empty ---");
-    io::println("  Total: 5/9 processes");
+// Walks THE process table (§2.0). This printed a five-line fiction: pids 0-4
+// with fixed states and names, and "Total: 5/9" whatever the kernel was doing.
+fn cmd_ps(t: ProcTable) {
+    io::println("  PID  STATE        PRI     RING");
+    io::println("  ---  -----------  ------  ---------");
+    let mut i = 0;
+    while i < 9 {
+        if !slot_is_free(slot_at(t, i)) {
+            io::print("  ");
+            io::print_int(slot_at(t, i).pid);
+            io::print("    ");
+            io::print(state_name(slot_at(t, i).state));
+            io::print("  ");
+            io::print(priority_name(slot_at(t, i).priority));
+            io::print("  ");
+            io::println(priv_name(slot_at(t, i).privilege));
+        }
+        i = i + 1;
+    }
+    io::print("  Total: ");
+    io::print_int(t.count);
+    io::print("/9 processes, ");
+    io::print_int(table_live(t));
+    io::println(" live");
 }
 
 fn cmd_mem() {
@@ -227,37 +242,39 @@ fn cmd_trit(n: int) {
     io::println("");
 }
 
-fn cmd_kill(target_pid: int, signal: int) {
+// Calls SYS_KILL, which delivers (§2.4). This printed "signal delivered via
+// SYS_KILL" and called nothing; its own range checks duplicated the ones
+// inside sys_kill, so they are gone too -- the syscall is the authority on
+// what a valid pid and signal are.
+fn cmd_kill(state: ShellState, t: ProcTable, sigt: SignalTable, bank: ContextBank,
+            target_pid: int, signal: int) {
     io::print("  sending signal ");
     io::print_int(signal);
     io::print(" to PID=");
     io::println_int(target_pid);
-
-    if target_pid < 0 || target_pid > 8 {
-        io::println("  ERROR: invalid PID (must be 0-8)");
-        return;
+    let r = sys_kill(state.pid, target_pid, signal, state.privilege, sigt, t, bank);
+    tif r {
+        + => io::println("  SYS_KILL: delivered"),
+        0 => io::println("  SYS_KILL: no action"),
+        - => io::println("  SYS_KILL: refused"),
     }
-    if signal < -4 || signal > 4 {
-        io::println("  ERROR: invalid signal (must be -4 to +4)");
-        return;
-    }
-    io::println("  signal delivered via SYS_KILL");
 }
 
-fn cmd_stat(path: str) {
+// Looks the path up in THE filesystem (§3). This matched four string literals
+// and reported `size: 0` for all of them, which was true only because nothing
+// could write a file at the time.
+fn cmd_stat(fs: TritFS, path: str) {
     io::print("  stat: ");
     io::println(path);
-    if path == "/dev/tty" {
-        io::println("  type: DEV(-1)  perm: rwx(+1)  size: 0  ino: 2");
-    } elif path == "/proc" {
-        io::println("  type: DIR(0)   perm: r--(-1)  size: 0  ino: 3");
-    } elif path == "/tmp" {
-        io::println("  type: DIR(0)   perm: rwx(+1)  size: 0  ino: 4");
-    } elif path == "/" {
-        io::println("  type: DIR(0)   perm: r-x(0)   size: 0  ino: 0");
-    } else {
-        io::println("  ERROR: path not found");
+    let mut i = 0;
+    while i < 9 {
+        if fs_inode_at(fs, i).valid && fs_inode_at(fs, i).name == path {
+            sys_stat(fs_inode_at(fs, i));
+            return;
+        }
+        i = i + 1;
     }
+    io::println("  ERROR: path not found");
 }
 
 fn cmd_clear() {
@@ -274,11 +291,8 @@ fn cmd_clear() {
 // ---------------------------------------------------------------------------
 
 // Return the substring after the first 'n' characters.
-fn args_after(cmd: str, n: int) -> str {
-    let total = str_len(cmd);
-    if total <= n { return ""; }
-    return str::substr(cmd, n, total - n);
-}
+// `args_after` REMOVED — it took the number of characters to skip as an
+// argument, so every call site hardcoded the length of its own keyword.
 
 // Parse the first space-separated integer from a string.
 fn parse_first_int(s: str) -> int {
@@ -299,140 +313,76 @@ fn parse_second_int(s: str) -> int {
 // Command dispatch
 // ---------------------------------------------------------------------------
 
-fn dispatch_command(cmd: str, state: ShellState) -> ShellState {
+// dispatch_command — ONE tokeniser, taken from the hosted shell (§4).
+//
+// This compared the WHOLE command string against a literal for nine commands
+// and then used `str::starts_with(cmd, "trit ")` with a hardcoded skip of five
+// characters for the four that take arguments. Two parsing strategies in one
+// function, and the second one counts the length of its own keyword by hand:
+// `args_after(cmd, 5)` is correct for "trit " and "kill " and silently wrong
+// for any command whose name is not four letters.
+//
+// `thatteos.mt` already had the right shape -- trim, find the first space,
+// name before it and arguments after -- so this is that, and `args_after` is
+// gone with the two helpers that only existed to serve it.
+//
+// It MUTATES the state rather than rebuilding it: the two `ShellState`
+// literals this function used to end with were the same spelled-out-copy
+// hazard as everywhere else, and one of them silently did not advance `tick`.
+fn dispatch_command(cmd_raw: str, state: ShellState, t: ProcTable, fs: TritFS,
+                    sigt: SignalTable, bank: ContextBank) -> ShellState {
+    let cmd = str::trim(cmd_raw);
     io::print("[");
     io::print_int(state.cmd_count);
     io::print("] ");
     print_prompt(state);
     io::println(cmd);
 
-    let new_count = state.cmd_count + 1;
+    state.cmd_count = state.cmd_count + 1;
+    state.tick = state.tick + 1;
 
-    if cmd == "help" {
-        cmd_help();
-    } elif cmd == "ps" {
-        cmd_ps();
-    } elif cmd == "mem" {
-        cmd_mem();
-    } elif cmd == "priv" {
-        cmd_priv(state);
-    } elif cmd == "whoami" {
-        cmd_whoami(state);
-    } elif cmd == "uptime" {
-        cmd_uptime(state);
-    } elif cmd == "dmesg" {
-        cmd_dmesg();
-    } elif cmd == "clear" {
-        cmd_clear();
-    } elif cmd == "exit" {
+    if cmd == "" {
+        return state;
+    }
+
+    // Split the verb from its arguments at the first space -- once, for every
+    // command, whatever the length of its name.
+    let space = str::find(cmd, " ");
+    let name = if space == -1 { cmd } else { str::substr(cmd, 0, space) };
+    let args = if space == -1 { "" } else {
+        str::trim(str::substr(cmd, space + 1, str::len(cmd) - space - 1))
+    };
+
+    if name == "help" { cmd_help(); }
+    elif name == "ps" { cmd_ps(t); }
+    elif name == "mem" { cmd_mem(); }
+    elif name == "priv" { cmd_priv(state); }
+    elif name == "whoami" { cmd_whoami(state); }
+    elif name == "uptime" { cmd_uptime(state); }
+    elif name == "dmesg" { cmd_dmesg(); }
+    elif name == "clear" { cmd_clear(); }
+    elif name == "trit" { cmd_trit(str::parse_int(args)); }
+    elif name == "echo" { io::print("  "); io::println(args); }
+    elif name == "kill" {
+        cmd_kill(state, t, sigt, bank, parse_first_int(args), parse_second_int(args));
+    }
+    elif name == "stat" { cmd_stat(fs, args); }
+    elif name == "exit" {
         io::println("  exit: shell terminating");
         io::println("  SYS_EXIT(0) — process.state = EXITED(-3)");
-        return ShellState { privilege: state.privilege, username: state.username,
-                            pid: state.pid, running: false, cmd_count: new_count,
-                            tick: state.tick };
-    } elif str::starts_with(cmd, "trit ") {
-        // "trit N" — convert any integer to balanced ternary
-        let arg = args_after(cmd, 5);
-        cmd_trit(str::parse_int(arg));
-    } elif str::starts_with(cmd, "echo ") {
-        // "echo <anything>" — print argument
-        let arg = args_after(cmd, 5);
-        io::print("  ");
-        io::println(arg);
-    } elif str::starts_with(cmd, "kill ") {
-        // "kill PID SIGNAL" — parse two space-separated integers
-        let args = args_after(cmd, 5);
-        let target_pid = parse_first_int(args);
-        let signal = parse_second_int(args);
-        cmd_kill(target_pid, signal);
-    } elif str::starts_with(cmd, "stat ") {
-        // "stat <path>" — any path
-        let path = args_after(cmd, 5);
-        cmd_stat(path);
-    } else {
+        state.running = false;
+    }
+    else {
         io::print("  command not found: ");
-        io::println(cmd);
+        io::println(name);
         io::println("  type 'help' for available commands");
     }
 
-    return ShellState { privilege: state.privilege, username: state.username,
-                        pid: state.pid, running: state.running, cmd_count: new_count,
-                        tick: state.tick + 1 };
+    return state;
 }
+
 
 // ---------------------------------------------------------------------------
 // main: demonstrate shell
 // ---------------------------------------------------------------------------
 
-fn main() {
-    io::println("=== THATTE-OS Shell Demo ===");
-    io::println("Interactive balanced ternary shell");
-    io::println("");
-
-    // Boot banner
-    io::println("THATTE-OS 0.2.0 (T3ISA/PANINI)");
-    io::println("Balanced Ternary Microkernel");
-    io::println("Type 'help' for available commands.");
-    io::println("");
-
-    let mut state = shell_init(-, "user", 2);
-
-    // Simulate a shell session
-    state = dispatch_command("help", state);
-    io::println("");
-
-    state = dispatch_command("whoami", state);
-    io::println("");
-
-    state = dispatch_command("priv", state);
-    io::println("");
-
-    state = dispatch_command("ps", state);
-    io::println("");
-
-    state = dispatch_command("mem", state);
-    io::println("");
-
-    state = dispatch_command("trit 42", state);
-    state = dispatch_command("trit 0", state);
-    state = dispatch_command("trit -13", state);
-    state = dispatch_command("trit 100", state);
-    state = dispatch_command("trit 729", state);
-    state = dispatch_command("trit 6560", state);   // 3^8 - 1 = max 8-trit value
-    io::println("");
-
-    state = dispatch_command("echo hello, THATTE-OS!", state);
-    state = dispatch_command("echo balanced ternary is the future", state);
-    io::println("");
-
-    state = dispatch_command("dmesg", state);
-    io::println("");
-
-    state = dispatch_command("kill 3 -2", state);
-    state = dispatch_command("kill 99 0", state);
-    state = dispatch_command("kill 4 2", state);
-    io::println("");
-
-    state = dispatch_command("stat /dev/tty", state);
-    state = dispatch_command("stat /proc", state);
-    state = dispatch_command("stat /tmp", state);
-    state = dispatch_command("stat /nonexistent", state);
-    io::println("");
-
-    state = dispatch_command("uptime", state);
-    io::println("");
-
-    state = dispatch_command("badcommand", state);
-    io::println("");
-
-    state = dispatch_command("exit", state);
-    io::println("");
-
-    io::println("=== Shell claims verified ===");
-    io::println("  13 built-in commands:           PASS");
-    io::println("  Privilege-aware prompt (#/$/>):  PASS");
-    io::println("  Balanced ternary conversion:     PASS");
-    io::println("  Process/memory/file display:     PASS");
-    io::println("  Error handling (unknown cmd):    PASS");
-    io::println("  Session tracking:                PASS");
-}

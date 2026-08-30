@@ -503,6 +503,21 @@ check "kernel: privilege drop to SERVICE"   "$OUT" "drop_to_service"
 check "kernel: launches init at USER"       "$OUT" "init: running at USER privilege"
 check "kernel: scheduler pass completes"    "$OUT" "[SCHED] scheduler_run: pass complete"
 check "kernel: boot completes"              "$OUT" "THATTE-OS boot sequence complete"
+# --- the event loop, ENHANCEMENT_PLAN §2.5 ---------------------------------
+# These four rows are the kernel-level evidence for §2.1 and §2.5: that the
+# timer reaches the scheduler and that waking a sleeper is a WRITE rather than
+# a sentence. Before this phase the kernel printed "-> scheduler_run() invoked"
+# at four sites and called it at none, so the third row here is the one that
+# separates the two states.
+check "kernel: event loop runs"             "$OUT" "[BOOT] event loop: interrupt -> timer -> scheduler"
+check "kernel: interrupt drives the timer"  "$OUT" "[IRQ] interrupt_dispatch: vector=0"
+check "kernel: timer wakes a sleeper"       "$OUT" "[TIMER] waking PID=1 (sleep expired at tick=2)"
+check "kernel: quantum expiry runs the scheduler" "$OUT" "[TIMER] quantum expired (3 ticks)"
+# The capability gate, exercised by the RUNNING kernel rather than by a demo.
+# init is admitted at USER(-1) and holds user_caps, which withhold CAN_MOD.
+check "kernel: a syscall passes the capability gate" "$OUT" "[SYSCALL] R1=-1 (SYS_YIELD)"
+check "kernel: USER is refused SYS_MOD_LOAD at boot" "$OUT" "refused — capability enforcement is live"
+
 # boot.mt's own stubs printed [BOOT] for these. If one comes back, a module got
 # re-implemented locally again and this is the row that notices.
 if [[ "$OUT" == *"[BOOT] interrupt_init"* ]] || [[ "$OUT" == *"[BOOT] vmem_init"* ]] || \
@@ -514,7 +529,7 @@ else
     PASS=$((PASS + 1))
 fi
 
-# The 25 module demos — a SECOND program, build/kernel_demos, built from
+# The 26 module demos — a SECOND program, build/kernel_demos, built from
 # src/kernel_demos.manifest. They were 25 separate `fn main`s before the merge
 # and nothing ran any of them; renaming them to `*_demo()` without calling them
 # would have made them dead code with a nicer name.
@@ -524,21 +539,30 @@ fi
 # the kernel they cost 19,000 words of a 60,000-word image, and with the
 # assertions below added they took it over the ceiling.
 #
-# The 37 [CHECK] lines they print are the ones that used to be `let r1 = ...`
+# The 140 [CHECK] lines they print are the ones that used to be `let r1 = ...`
 # bindings nobody read, beside hardcoded "PASS" string literals. The expected
 # value at each site was derived FROM THE SOURCE -- the CapWord constructors,
 # `sys_kill`'s privilege rules, the demo's own stated intent -- and not from
 # what the program happened to print, because a check that copies the observed
 # answer tests nothing.
+#
+# 37 -> 57 on 30 August 2026: timer's demo had ZERO assertions and closed by
+# printing five hardcoded "PASS" lines. ENHANCEMENT_PLAN §2.2 recorded the
+# sleep queue as broken; re-probing found the prescribed remedy already
+# implemented and NOTHING pinning it. The 20 new rows pin it, and they bite --
+# reintroducing exactly the defect §2.2 describes (wake_entry_if_due returning
+# the entry without clearing `valid`) turns 7 of the 20 red, where before the
+# whole defect was invisible. Update this number in the same commit that adds
+# or removes an assertion.
 DEMOS=$(timeout 60 "$KERNEL_DEMOS" 2>&1 || true)
-check "demos: all 25 ran"           "$DEMOS" "all 25 module demonstrations complete"
+check "demos: all 26 ran"           "$DEMOS" "all 26 module demonstrations complete"
 NPASS=$(printf '%s\n' "$DEMOS" | grep -c "CHECK\] PASS" || true)
 NFAIL=$(printf '%s\n' "$DEMOS" | grep -c "CHECK\] FAIL" || true)
-if [ "$NPASS" -eq 37 ] && [ "$NFAIL" -eq 0 ]; then
-    echo "  PASS  demos: 37/37 in-kernel assertions hold"
+if [ "$NPASS" -eq 140 ] && [ "$NFAIL" -eq 0 ]; then
+    echo "  PASS  demos: 140/140 in-kernel assertions hold"
     PASS=$((PASS + 1))
 else
-    echo "  FAIL  demos: 37/37 in-kernel assertions hold"
+    echo "  FAIL  demos: 140/140 in-kernel assertions hold"
     echo "        got $NPASS PASS and $NFAIL FAIL"
     printf '%s\n' "$DEMOS" | grep "CHECK\] FAIL" | head -5
     FAIL=$((FAIL + 1))
@@ -578,7 +602,7 @@ echo "=== results: $PASS/$TOTAL passed ==="
 # the count. This constant is a second source of truth and it is deliberate:
 # it is the only thing that can notice a check disappearing. Update it in the
 # same commit that adds or removes one; the message says so.
-EXPECTED_CHECKS=96
+EXPECTED_CHECKS=102
 if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
     echo "    SUITE INCOMPLETE: ran $TOTAL checks, expected $EXPECTED_CHECKS"
     echo "    a check disappeared, or one was added without updating"

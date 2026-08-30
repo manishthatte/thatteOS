@@ -5,37 +5,36 @@
 
 fn draw_explorer(cwd_l: str, cwd_r: str, sel_l: int, sel_r: int,
                  scroll_l: int, scroll_r: int,
-                 active_pane: int, top_y: int, bot_y: int,
-                 mx: int, my: int) {
+                 active_pane: int, v: View) {
     let ww    = gui_window_width();
     let fh    = gui_font_height();
     let half  = ww / 2;
     let ph    = 26;    // pane header height
     let row_h = 22;
     let tool_h = 34;
-    let list_top = top_y + ph + 2;
-    let list_bot = bot_y - tool_h;
+    let list_top = v.top_y + ph + 2;
+    let list_bot = v.bot_y - tool_h;
     let visible  = (list_bot - list_top) / row_h;
 
     // Pane header bar
     c_tabbar();
-    gui_fill_rect(0, top_y, ww, ph);
+    gui_fill_rect(0, v.top_y, ww, ph);
     c_border();
-    gui_draw_line(half, top_y, half, list_bot);
-    gui_draw_line(0, top_y + ph, ww, top_y + ph);
+    gui_draw_line(half, v.top_y, half, list_bot);
+    gui_draw_line(0, v.top_y + ph, ww, v.top_y + ph);
 
     // Path labels in headers
     if active_pane == 0 { c_accent(); } else { c_dim(); }
-    gui_draw_text(cwd_l, L_MARGIN(), top_y + (ph - fh) / 2);
+    gui_draw_text(cwd_l, L_MARGIN(), v.top_y + (ph - fh) / 2);
     if active_pane == 1 { c_accent(); } else { c_dim(); }
-    gui_draw_text(cwd_r, half + L_MARGIN(), top_y + (ph - fh) / 2);
+    gui_draw_text(cwd_r, half + L_MARGIN(), v.top_y + (ph - fh) / 2);
 
     // ── Left pane ──────────────────────────────────────────────────────────
     let count_l = fs_list_dir_open(cwd_l);
     let mut li  = 0;
     // ".." entry
     let par_l_y   = list_top;
-    let par_l_hot = in_rect(mx, my, 0, par_l_y, half, row_h);
+    let par_l_hot = in_rect(v.mx, v.my, 0, par_l_y, half, row_h);
     if par_l_hot == 1 { c_hover(); gui_fill_rect(0, par_l_y, half, row_h); }
     c_dim();
     gui_draw_text("↑ ..", L_MARGIN() + 8, par_l_y + (row_h - fh) / 2);
@@ -50,7 +49,7 @@ fn draw_explorer(cwd_l: str, cwd_r: str, sel_l: int, sel_r: int,
         let is_d = fs_is_dir(full);
         let ry   = lfile_top + li * row_h;
         let sel  = if active_pane == 0 && sel_l == idx { 1 } else { 0 };
-        let hot  = in_rect(mx, my, 0, ry, half, row_h);
+        let hot  = in_rect(v.mx, v.my, 0, ry, half, row_h);
 
         if sel == 1 { c_selection(); gui_fill_rect(0, ry, half, row_h); }
         elif hot == 1 { c_hover(); gui_fill_rect(0, ry, half, row_h); }
@@ -74,7 +73,7 @@ fn draw_explorer(cwd_l: str, cwd_r: str, sel_l: int, sel_r: int,
     let count_r = fs_list_dir_open(cwd_r);
     let mut ri  = 0;
     let par_r_y   = list_top;
-    let par_r_hot = in_rect(mx, my, half, par_r_y, half, row_h);
+    let par_r_hot = in_rect(v.mx, v.my, half, par_r_y, half, row_h);
     if par_r_hot == 1 { c_hover(); gui_fill_rect(half, par_r_y, half, row_h); }
     c_dim();
     gui_draw_text("↑ ..", half + L_MARGIN() + 8, par_r_y + (row_h - fh) / 2);
@@ -89,7 +88,7 @@ fn draw_explorer(cwd_l: str, cwd_r: str, sel_l: int, sel_r: int,
         let is_d = fs_is_dir(full);
         let ry   = rfile_top + ri * row_h;
         let sel  = if active_pane == 1 && sel_r == idx { 1 } else { 0 };
-        let hot  = in_rect(mx, my, half, ry, half, row_h);
+        let hot  = in_rect(v.mx, v.my, half, ry, half, row_h);
 
         if sel == 1 { c_selection(); gui_fill_rect(half, ry, half, row_h); }
         elif hot == 1 { c_hover(); gui_fill_rect(half, ry, half, row_h); }
@@ -115,10 +114,10 @@ fn draw_explorer(cwd_l: str, cwd_r: str, sel_l: int, sel_r: int,
     c_border();
     gui_draw_line(0, tool_y, ww, tool_y);
     let mut bx2 = L_MARGIN();
-    bx2 = draw_btn("F5 Copy",  bx2, tool_y + 3, 78, 26, mx, my);
-    bx2 = draw_btn("F6 Move",  bx2, tool_y + 3, 78, 26, mx, my);
-    bx2 = draw_btn("F7 MkDir", bx2, tool_y + 3, 86, 26, mx, my);
-    bx2 = draw_btn("F8 Del",   bx2, tool_y + 3, 72, 26, mx, my);
+    bx2 = draw_btn("F5 Copy",  bx2, tool_y + 3, 78, 26, v.mx, v.my);
+    bx2 = draw_btn("F6 Move",  bx2, tool_y + 3, 78, 26, v.mx, v.my);
+    bx2 = draw_btn("F7 MkDir", bx2, tool_y + 3, 86, 26, v.mx, v.my);
+    bx2 = draw_btn("F8 Del",   bx2, tool_y + 3, 72, 26, v.mx, v.my);
 
     // Active-pane indicator
     let pane_label = if active_pane == 0 { "← Left  (Tab to switch)" }

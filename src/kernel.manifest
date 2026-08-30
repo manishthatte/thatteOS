@@ -41,6 +41,7 @@ src/kernel/tmin2.mt
 # --- kernel services --------------------------------------------------------
 src/kernel/klog.mt
 src/kernel/privilege.mt
+src/security/capability.mt
 src/kernel/panic.mt
 src/kernel/guard.mt
 src/kernel/context.mt
@@ -75,8 +76,12 @@ src/drivers/tty.mt
 src/syscall/syscall.mt
 
 # --- security ---------------------------------------------------------------
-src/security/capability.mt
 src/security/photon_cap.mt
+
+# The kernel-side shell. In NEITHER manifest until 30 August 2026 (§4), so it
+# was compiled by nothing; its `priv_name` had drifted from
+# kernel/privilege.mt's because the flat namespace never made them meet.
+src/userspace/shell.mt
 
 # --- entry point (last: kernel_main calls everything above) -----------------
 src/boot.mt

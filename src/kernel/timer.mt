@@ -143,14 +143,24 @@ struct TickResult {
 // wake_entry_if_due: check one entry; log wakeup and clear it if expired
 // ---------------------------------------------------------------------------
 
-fn wake_entry_if_due(entry: SleepEntry, current_tick: int) -> SleepEntry {
+fn wake_entry_if_due(entry: SleepEntry, current_tick: int, t: ProcTable) -> SleepEntry {
     if entry.valid && current_tick >= entry.wake_tick {
         io::print("  [TIMER] waking PID=");
         io::print_int(entry.pid);
         io::print(" (sleep expired at tick=");
         io::print_int(entry.wake_tick);
         io::println(")");
-        io::println("    process.state = READY(+3)");
+        // IT NOW WAKES IT. ENHANCEMENT_PLAN §2.1.
+        // This line used to be the whole of the waking: the queue entry was
+        // invalidated and the sleeper's own PCB was never touched, because
+        // until §2.0 there was no process table to touch. A process that had
+        // called sys_sleep stayed in SLEEP(-2) for ever while the timer
+        // printed that it had been made READY.
+        if table_set_state(t, entry.pid, 3) {
+            io::println("    process.state = READY(+3)");
+        } else {
+            io::println("    process.state = READY(+3) — pid not in the table");
+        }
         // Clear the entry so it does not fire again next tick
         return SleepEntry { pid: entry.pid, wake_tick: entry.wake_tick, valid: false };
     }
@@ -162,7 +172,7 @@ fn wake_entry_if_due(entry: SleepEntry, current_tick: int) -> SleepEntry {
 // Returns updated TimerState AND the cleaned SleepQueue.
 // ---------------------------------------------------------------------------
 
-fn timer_tick(timer: TimerState, queue: SleepQueue) -> TickResult {
+fn timer_tick(timer: TimerState, queue: SleepQueue, t: ProcTable) -> TickResult {
     let new_tick = timer.tick + 1;
     let new_quantum_ticks = timer.ticks_this_quantum + 1;
 
@@ -170,15 +180,15 @@ fn timer_tick(timer: TimerState, queue: SleepQueue) -> TickResult {
     io::println_int(new_tick);
 
     // Wake and invalidate any expired sleep entries
-    let e0 = wake_entry_if_due(queue.s0, new_tick);
-    let e1 = wake_entry_if_due(queue.s1, new_tick);
-    let e2 = wake_entry_if_due(queue.s2, new_tick);
-    let e3 = wake_entry_if_due(queue.s3, new_tick);
-    let e4 = wake_entry_if_due(queue.s4, new_tick);
-    let e5 = wake_entry_if_due(queue.s5, new_tick);
-    let e6 = wake_entry_if_due(queue.s6, new_tick);
-    let e7 = wake_entry_if_due(queue.s7, new_tick);
-    let e8 = wake_entry_if_due(queue.s8, new_tick);
+    let e0 = wake_entry_if_due(queue.s0, new_tick, t);
+    let e1 = wake_entry_if_due(queue.s1, new_tick, t);
+    let e2 = wake_entry_if_due(queue.s2, new_tick, t);
+    let e3 = wake_entry_if_due(queue.s3, new_tick, t);
+    let e4 = wake_entry_if_due(queue.s4, new_tick, t);
+    let e5 = wake_entry_if_due(queue.s5, new_tick, t);
+    let e6 = wake_entry_if_due(queue.s6, new_tick, t);
+    let e7 = wake_entry_if_due(queue.s7, new_tick, t);
+    let e8 = wake_entry_if_due(queue.s8, new_tick, t);
 
     // Count how many entries were woken (valid before, invalidated now) so
     // queue.count reflects the number of occupied slots.
@@ -204,7 +214,13 @@ fn timer_tick(timer: TimerState, queue: SleepQueue) -> TickResult {
     let mut final_quantum_ticks = new_quantum_ticks;
     if new_quantum_ticks >= timer.quantum {
         io::println("  [TIMER] quantum expired (3 ticks) — preempt current process");
-        io::println("  -> scheduler_run() invoked");
+        // AND IT NOW INVOKES IT. ENHANCEMENT_PLAN §2.1.
+        // The line under this one used to read `-> scheduler_run() invoked`,
+        // which was true only as a description. It was one of four sites in
+        // the kernel printing that sentence, none of which called the
+        // function -- and while `scheduler_run` built its own table and threw
+        // it away, printing was the honest choice.
+        scheduler_run(t);
         final_quantum_ticks = 0;
     }
 

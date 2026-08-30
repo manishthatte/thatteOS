@@ -18,6 +18,20 @@ use std::io;
 
 // ── Colors — Solarized Light ──────────────────────────────────────────────────
 
+// The pane geometry plus the mouse. Grouped 30 August 2026 because
+// `draw_pane` took ten parameters and the T3 calling convention passes
+// arguments in R1-R8 with no stack argument area, so the file manager could
+// not be built for its own target at all. See studioMani/layout.mt for the
+// measurement: five functions in the repository were over the limit.
+struct PaneRect {
+    pub px: int, pub py: int, pub pw: int, pub ph: int,
+    pub mx: int, pub my: int,
+}
+
+fn make_pane_rect(px: int, py: int, pw: int, ph: int, mx: int, my: int) -> PaneRect {
+    return PaneRect { px: px, py: py, pw: pw, ph: ph, mx: mx, my: my };
+}
+
 fn c_bg()       -> int { return gui_set_color(253, 246, 227, 255); }   // base3
 fn c_panel()    -> int { return gui_set_color(238, 232, 213, 255); }   // base2
 fn c_active()   -> int { return gui_set_color(225, 238, 250, 255); }   // blue-tinted base3
@@ -127,34 +141,33 @@ fn confirm(msg: str, detail: str) -> int {
 
 // ── Draw one pane ─────────────────────────────────────────────────────────────
 
-fn draw_pane(cwd: str, sel: int, scroll: int, active: int,
-             px: int, py: int, pw: int, ph: int, mx: int, my: int) {
+fn draw_pane(cwd: str, sel: int, scroll: int, active: int, r: PaneRect) {
     let fh = gui_font_height();
 
     // Pane background
     if active == 1 { c_active(); } else { c_panel(); }
-    gui_fill_rect(px, py, pw, ph);
+    gui_fill_rect(r.px, r.py, r.pw, r.ph);
     if active == 1 { c_accent(); } else { c_border(); }
-    gui_draw_rect(px, py, pw, ph);
+    gui_draw_rect(r.px, r.py, r.pw, r.ph);
 
     // Path header
     c_dim();
     let path_show = if str_len(cwd) > 36 { str_slice(cwd, str_len(cwd) - 36, str_len(cwd)) } else { cwd };
-    gui_draw_text(path_show, px + MARGIN(), py + (24 - fh) / 2);
+    gui_draw_text(path_show, r.px + MARGIN(), r.py + (24 - fh) / 2);
     c_border();
-    gui_draw_line(px, py + 24, px + pw, py + 24);
+    gui_draw_line(r.px, r.py + 24, r.px + r.pw, r.py + 24);
 
     // Column headers
     gui_set_color(44, 44, 44, 255);
-    gui_fill_rect(px, py + 24, pw, 20);
+    gui_fill_rect(r.px, r.py + 24, r.pw, 20);
     c_dim();
-    gui_draw_text("Name", px + MARGIN() + 20, py + 24 + (20 - fh) / 2);
-    gui_draw_text("Size", px + pw - 72,       py + 24 + (20 - fh) / 2);
+    gui_draw_text("Name", r.px + MARGIN() + 20, r.py + 24 + (20 - fh) / 2);
+    gui_draw_text("Size", r.px + r.pw - 72,       r.py + 24 + (20 - fh) / 2);
     c_border();
-    gui_draw_line(px, py + 44, px + pw, py + 44);
+    gui_draw_line(r.px, r.py + 44, r.px + r.pw, r.py + 44);
 
-    let list_top = py + 44;
-    let visible  = (py + ph - list_top) / ROW_H();
+    let list_top = r.py + 44;
+    let visible  = (r.py + r.ph - list_top) / ROW_H();
     let count    = fs_list_dir_open(cwd);
 
     let mut i = 0;
@@ -166,29 +179,29 @@ fn draw_pane(cwd: str, sel: int, scroll: int, active: int,
         let is_d = fs_is_dir(full);
         let ry   = list_top + i * ROW_H();
         let issel = if sel == idx { 1 } else { 0 };
-        let hot  = in_rect(mx, my, px, ry, pw, ROW_H());
+        let hot  = in_rect(r.mx, r.my, r.px, ry, r.pw, ROW_H());
 
-        if issel == 1 { c_sel();   gui_fill_rect(px, ry, pw, ROW_H()); }
-        elif hot == 1 { c_hover(); gui_fill_rect(px, ry, pw, ROW_H()); }
+        if issel == 1 { c_sel();   gui_fill_rect(r.px, ry, r.pw, ROW_H()); }
+        elif hot == 1 { c_hover(); gui_fill_rect(r.px, ry, r.pw, ROW_H()); }
 
         // Icon (text)
         if is_d == 1 {
             c_dir();
-            gui_draw_text("▶", px + MARGIN(), ry + (ROW_H() - fh) / 2);
-            gui_draw_text(name, px + MARGIN() + 16, ry + (ROW_H() - fh) / 2);
+            gui_draw_text("▶", r.px + MARGIN(), ry + (ROW_H() - fh) / 2);
+            gui_draw_text(name, r.px + MARGIN() + 16, ry + (ROW_H() - fh) / 2);
             c_size();
-            gui_draw_text("<dir>", px + pw - 72, ry + (ROW_H() - fh) / 2);
+            gui_draw_text("<dir>", r.px + r.pw - 72, ry + (ROW_H() - fh) / 2);
         } else {
             c_ext(name);
-            gui_draw_text(" ", px + MARGIN(), ry + (ROW_H() - fh) / 2);
-            gui_draw_text(name, px + MARGIN() + 16, ry + (ROW_H() - fh) / 2);
+            gui_draw_text(" ", r.px + MARGIN(), ry + (ROW_H() - fh) / 2);
+            gui_draw_text(name, r.px + MARGIN() + 16, ry + (ROW_H() - fh) / 2);
             let sz = fs_file_size(full);
             c_size();
-            gui_draw_text(size_str(sz), px + pw - 72, ry + (ROW_H() - fh) / 2);
+            gui_draw_text(size_str(sz), r.px + r.pw - 72, ry + (ROW_H() - fh) / 2);
         }
 
         c_border();
-        gui_draw_line(px, ry + ROW_H() - 1, px + pw, ry + ROW_H() - 1);
+        gui_draw_line(r.px, ry + ROW_H() - 1, r.px + r.pw, ry + ROW_H() - 1);
         i = i + 1;
         }
     }
@@ -234,9 +247,9 @@ fn main() {
 
         // Panes
         draw_pane(cwd_l, sel_l, scr_l, if pane == 0 { 1 } else { 0 },
-                  0, top_y, half, pane_h, mx, my);
+                  make_pane_rect(0, top_y, half, pane_h, mx, my));
         draw_pane(cwd_r, sel_r, scr_r, if pane == 1 { 1 } else { 0 },
-                  half + 2, top_y, ww - half - 2, pane_h, mx, my);
+                  make_pane_rect(half + 2, top_y, ww - half - 2, pane_h, mx, my));
 
         // Toolbar (F-key bar, NC-style)
         let tb_y = bot_y;

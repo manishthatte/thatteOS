@@ -38,16 +38,43 @@ fn fdtable_demo() {
     print_fdtable(fdt);
     io::println("");
 
-    io::println("--- Write 256 trytes to fd=3 ---");
-    let w = sys_write(3, 4096, 256);
-    io::print("  result: ");
-    io::println_int(w);
+    // §3: a REAL round trip. The file is an inode in a real TritFS, the write
+    // stores bytes and the read returns them. `sys_write` used to return its
+    // own `len` argument having touched nothing, so a demo asserting the
+    // result was asserting its own input.
+    // A FRESH fs and fd table for the round trip, and a file that actually
+    // exists. The fd opened above names inode 7, which in a fresh TritFS is an
+    // EMPTY inode at permission 0 (r-x) -- so a write to it is correctly
+    // REFUSED, and the first version of this block asserted otherwise. The
+    // demo was opening an inode nobody had created.
+    let mut fs = tritfs_init();
+    fs = create_file(fs, "/tmp/data.mt", 4, +);   // -> inode 6, rwx
+    let mut fdt2 = fd_table_init(2);
+    fdt2 = sys_open(fdt2, 6, 0, "/tmp/data.mt"); // -> fd 3
     io::println("");
+    io::println("--- Write to fd=3, then read it back ---");
+    let w = sys_write_data(fs, fdt2, 3, "hello ternary");
+    io::print("  wrote: ");
+    io::println_int(w);
+    expect_int("fd: the write reports the byte count", w, 13);
+    expect_int("fd: the inode's size was updated",  fs_inode_at(fs, 6).size, 13);
 
-    io::println("--- Read 64 trytes from fd=3 ---");
-    let r = sys_read(3, 8192, 64);
-    io::print("  result: ");
-    io::println_int(r);
+    let r = sys_read_data(fs, fdt2, 3);
+    io::print("  read back: ");
+    io::println(r);
+    expect_bool("fd: what was written is what is read", r == "hello ternary", true);
+
+    // The permission check, which had no caller outside its own demo before §3.
+    // ino 3 is /proc at r--, so a write to it must be refused. It is opened on
+    // a second fd so the successful path above is untouched.
+    fdt2 = sys_open(fdt2, 3, 0, "/proc");
+    let denied = sys_write_data(fs, fdt2, 4, "nope");
+    expect_int("fd: writing to an r-- inode is refused", denied, -1);
+    expect_bool("fd: and the refused write stored nothing",
+                fs_inode_at(fs, 3).content == "", true);
+    // ...and the same inode still READS, so the refusal is about the verb.
+    let pr = sys_read_data(fs, fdt2, 4);
+    expect_bool("fd: an r-- inode still reads", pr == "", true);
     io::println("");
 
     io::println("--- Close fd=3 ---");

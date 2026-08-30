@@ -43,22 +43,19 @@ fn em_sample_body(idx: int) -> str {
 }
 
 fn draw_email(folder: str, sel_mail: int, mail_scroll: int,
-              show_body: int,
-              compose_mode: int, compose_to: str, compose_sub: str,
-              compose_body: str, compose_field: int,
-              top_y: int, bot_y: int, mx: int, my: int) {
+              show_body: int, cmp: Compose, v: View) {
     let ww = gui_window_width();
     let fh = gui_font_height();
 
     c_editor();
-    gui_fill_rect(0, top_y, ww, bot_y - top_y);
+    gui_fill_rect(0, v.top_y, ww, v.bot_y - v.top_y);
 
     // ── Compose overlay ────────────────────────────────────────────────────
-    if compose_mode == 1 {
+    if cmp.mode == 1 {
         let cw3  = ww - 80;
-        let ch3  = bot_y - top_y - 40;
+        let ch3  = v.bot_y - v.top_y - 40;
         let cx3  = 40;
-        let cy3  = top_y + 20;
+        let cy3  = v.top_y + 20;
 
         gui_set_color(245, 238, 220, 255);
         gui_fill_rect(cx3, cy3, cw3, ch3);
@@ -78,45 +75,45 @@ fn draw_email(folder: str, sel_mail: int, mail_scroll: int,
         // To:
         c_dim();
         gui_draw_text("To:", cx3 + 10, cy3 + 38);
-        let to_foc = if compose_field == 0 { 1 } else { 0 };
+        let to_foc = if cmp.field == 0 { 1 } else { 0 };
         if to_foc == 1 { c_accent(); } else { c_border(); }
         gui_set_color(253, 246, 227, 255);
         gui_fill_rect(fld_x, cy3 + 34, fld_w, 24);
         if to_foc == 1 { c_accent(); } else { c_border(); }
         gui_draw_rect(fld_x, cy3 + 34, fld_w, 24);
         c_white();
-        gui_draw_text(compose_to, fld_x + 5, cy3 + 34 + (24 - fh) / 2);
-        if to_foc == 1 { let tcw = gui_text_width(compose_to); c_cursor(); gui_draw_line(fld_x + 5 + tcw, cy3 + 37, fld_x + 5 + tcw, cy3 + 55); }
+        gui_draw_text(cmp.to, fld_x + 5, cy3 + 34 + (24 - fh) / 2);
+        if to_foc == 1 { let tcw = gui_text_width(cmp.to); c_cursor(); gui_draw_line(fld_x + 5 + tcw, cy3 + 37, fld_x + 5 + tcw, cy3 + 55); }
 
         // Subject:
         c_dim();
         gui_draw_text("Subject:", cx3 + 10, cy3 + 70);
-        let sub_foc = if compose_field == 1 { 1 } else { 0 };
+        let sub_foc = if cmp.field == 1 { 1 } else { 0 };
         gui_set_color(253, 246, 227, 255);
         gui_fill_rect(fld_x, cy3 + 66, fld_w, 24);
         if sub_foc == 1 { c_accent(); } else { c_border(); }
         gui_draw_rect(fld_x, cy3 + 66, fld_w, 24);
         c_white();
-        gui_draw_text(compose_sub, fld_x + 5, cy3 + 66 + (24 - fh) / 2);
-        if sub_foc == 1 { let scw = gui_text_width(compose_sub); c_cursor(); gui_draw_line(fld_x + 5 + scw, cy3 + 69, fld_x + 5 + scw, cy3 + 87); }
+        gui_draw_text(cmp.sub, fld_x + 5, cy3 + 66 + (24 - fh) / 2);
+        if sub_foc == 1 { let scw = gui_text_width(cmp.sub); c_cursor(); gui_draw_line(fld_x + 5 + scw, cy3 + 69, fld_x + 5 + scw, cy3 + 87); }
 
         // Body
         c_border();
         gui_draw_line(cx3, cy3 + 98, cx3 + cw3, cy3 + 98);
-        let body_foc = if compose_field == 2 { 1 } else { 0 };
+        let body_foc = if cmp.field == 2 { 1 } else { 0 };
         let body_y   = cy3 + 104;
         c_text();
         // Render body lines
-        let blines = text_line_count(compose_body);
+        let blines = text_line_count(cmp.body);
         let bvis   = int_min(blines, (ch3 - 108) / L_LINE());
         let mut bi = 0;
         while bi < bvis {
-            let bline = text_get_line(compose_body, bi);
+            let bline = text_get_line(cmp.body, bi);
             gui_draw_text(bline, fld_x, body_y + bi * L_LINE());
             bi = bi + 1;
         }
         if body_foc == 1 {
-            let last_line = if blines > 0 { text_get_line(compose_body, blines - 1) } else { "" };
+            let last_line = if blines > 0 { text_get_line(cmp.body, blines - 1) } else { "" };
             let bx3 = fld_x + gui_text_width(last_line);
             let by3 = body_y + int_max(0, blines - 1) * L_LINE();
             c_cursor();
@@ -124,25 +121,25 @@ fn draw_email(folder: str, sel_mail: int, mail_scroll: int,
         }
 
         // Send / Cancel buttons
-        let ok3  = draw_btn_accent("Send",   cx3 + cw3 - 162, cy3 + ch3 - 36, 70, 28, mx, my);
-        draw_btn("Cancel", ok3, cy3 + ch3 - 36, 82, 28, mx, my);
+        let ok3  = draw_btn_accent("Send",   cx3 + cw3 - 162, cy3 + ch3 - 36, 70, 28, v.mx, v.my);
+        draw_btn("Cancel", ok3, cy3 + ch3 - 36, 82, 28, v.mx, v.my);
         return;
     }
 
     // ── Folder panel (left 160px) ──────────────────────────────────────────
     let fp_w = 160;
     gui_set_color(238, 232, 213, 255);
-    gui_fill_rect(0, top_y, fp_w, bot_y - top_y);
+    gui_fill_rect(0, v.top_y, fp_w, v.bot_y - v.top_y);
     c_border();
-    gui_draw_line(fp_w, top_y, fp_w, bot_y);
+    gui_draw_line(fp_w, v.top_y, fp_w, v.bot_y);
     c_dim();
-    gui_draw_text("FOLDERS", L_MARGIN(), top_y + 8);
+    gui_draw_text("FOLDERS", L_MARGIN(), v.top_y + 8);
 
     let folders = ["INBOX", "SENT", "DRAFTS", "ARCHIVE", "TRASH"];
     let mut fi  = 0;
     while fi < 5 {
-        let fy  = top_y + 32 + fi * 28;
-        let hot = in_rect(mx, my, 0, fy, fp_w, 28);
+        let fy  = v.top_y + 32 + fi * 28;
+        let hot = in_rect(v.mx, v.my, 0, fy, fp_w, 28);
         let sel = if folders[fi] == folder { 1 } else { 0 };
         if sel == 1 { c_selection(); gui_fill_rect(0, fy, fp_w, 28); c_white(); }
         elif hot == 1 { c_hover(); gui_fill_rect(0, fy, fp_w, 28); c_dim(); }
@@ -153,10 +150,10 @@ fn draw_email(folder: str, sel_mail: int, mail_scroll: int,
 
     // Compose button
     c_accent();
-    gui_fill_rect(L_MARGIN(), top_y + 32 + 5 * 28 + 10, fp_w - L_MARGIN() * 2, 30);
+    gui_fill_rect(L_MARGIN(), v.top_y + 32 + 5 * 28 + 10, fp_w - L_MARGIN() * 2, 30);
     c_statusbar_txt();
     let cbtw = gui_text_width("+ Compose");
-    gui_draw_text("+ Compose", (fp_w - cbtw) / 2, top_y + 32 + 5 * 28 + 10 + (30 - fh) / 2);
+    gui_draw_text("+ Compose", (fp_w - cbtw) / 2, v.top_y + 32 + 5 * 28 + 10 + (30 - fh) / 2);
 
     // ── Mail list + body split ──────────────────────────────────────────────
     let ml_x   = fp_w;
@@ -165,23 +162,23 @@ fn draw_email(folder: str, sel_mail: int, mail_scroll: int,
 
     // Column headers
     gui_set_color(238, 232, 213, 255);
-    gui_fill_rect(ml_x, top_y, ml_w, 28);
+    gui_fill_rect(ml_x, v.top_y, ml_w, 28);
     c_border();
-    gui_draw_line(ml_x, top_y + 28, ml_x + ml_w, top_y + 28);
+    gui_draw_line(ml_x, v.top_y + 28, ml_x + ml_w, v.top_y + 28);
     c_dim();
-    gui_draw_text("FROM",    ml_x + 8,         top_y + (28 - fh) / 2);
-    gui_draw_text("SUBJECT", ml_x + 210,       top_y + (28 - fh) / 2);
-    gui_draw_text("DATE",    ml_x + ml_w - 110, top_y + (28 - fh) / 2);
+    gui_draw_text("FROM",    ml_x + 8,         v.top_y + (28 - fh) / 2);
+    gui_draw_text("SUBJECT", ml_x + 210,       v.top_y + (28 - fh) / 2);
+    gui_draw_text("DATE",    ml_x + ml_w - 110, v.top_y + (28 - fh) / 2);
 
     let row_h = 36;
-    let vis   = (bot_y - top_y - 28) / row_h;
+    let vis   = (v.bot_y - v.top_y - 28) / row_h;
     let total = 5;
     let mut mi = 0;
     while mi < vis {
         let idx   = mail_scroll + mi;
         if idx >= total { mi = vis; } else {
-        let ry    = top_y + 28 + mi * row_h;
-        let hot   = in_rect(mx, my, ml_x, ry, ml_w, row_h);
+        let ry    = v.top_y + 28 + mi * row_h;
+        let hot   = in_rect(v.mx, v.my, ml_x, ry, ml_w, row_h);
         let issel = if sel_mail == idx { 1 } else { 0 };
 
         if issel == 1 { c_selection(); gui_fill_rect(ml_x, ry, ml_w, row_h); }
@@ -208,31 +205,31 @@ fn draw_email(folder: str, sel_mail: int, mail_scroll: int,
     if show_body == 1 {
         let bpx = ml_x + ml_w;
         gui_set_color(253, 246, 227, 255);
-        gui_fill_rect(bpx, top_y, body_w, bot_y - top_y);
+        gui_fill_rect(bpx, v.top_y, body_w, v.bot_y - v.top_y);
         c_border();
-        gui_draw_line(bpx, top_y, bpx, bot_y);
+        gui_draw_line(bpx, v.top_y, bpx, v.bot_y);
 
         // Body header
         gui_set_color(238, 232, 213, 255);
-        gui_fill_rect(bpx, top_y, body_w, 48);
+        gui_fill_rect(bpx, v.top_y, body_w, 48);
         c_border();
-        gui_draw_line(bpx, top_y + 48, bpx + body_w, top_y + 48);
+        gui_draw_line(bpx, v.top_y + 48, bpx + body_w, v.top_y + 48);
         c_white();
-        gui_draw_text(em_sample_subject(sel_mail), bpx + 10, top_y + 8);
+        gui_draw_text(em_sample_subject(sel_mail), bpx + 10, v.top_y + 8);
         c_dim();
         let from_line = str_concat("From: ", em_sample_from(sel_mail));
-        gui_draw_text(from_line, bpx + 10, top_y + 28);
+        gui_draw_text(from_line, bpx + 10, v.top_y + 28);
 
         // Body text
         let body_txt  = em_sample_body(sel_mail);
         let body_lines = text_line_count(body_txt);
-        let bvis       = (bot_y - top_y - 52) / L_LINE();
+        let bvis       = (v.bot_y - v.top_y - 52) / L_LINE();
         c_text();
         let mut bli = 0;
         while bli < bvis {
             if bli < body_lines {
                 gui_draw_text(text_get_line(body_txt, bli),
-                              bpx + 10, top_y + 52 + bli * L_LINE());
+                              bpx + 10, v.top_y + 52 + bli * L_LINE());
             }
             bli = bli + 1;
         }

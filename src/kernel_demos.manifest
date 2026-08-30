@@ -21,6 +21,7 @@
 src/kernel/tmin2.mt
 src/kernel/klog.mt
 src/kernel/privilege.mt
+src/security/capability.mt
 src/kernel/panic.mt
 src/kernel/guard.mt
 src/kernel/context.mt
@@ -36,13 +37,23 @@ src/fs/inode.mt
 src/fs/perms.mt
 src/fs/fdtable.mt
 src/fs/tritfs.mt
+
+# HOSTED ONLY, and deliberately absent from src/kernel.manifest: it calls the
+# fs_* builtins, which have no T3ISA syscall (`Undefined label: fs_mkdir`), so
+# the kernel could not be built for its own target with it in. See the module
+# header for the measurement.
+src/fs/hosted_store.mt
 src/ipc/messages.mt
 src/ipc/pipe.mt
 src/ipc/trit_stream.mt
 src/drivers/tty.mt
 src/syscall/syscall.mt
-src/security/capability.mt
 src/security/photon_cap.mt
+
+# The kernel-side shell. In NEITHER manifest until 30 August 2026 (§4), so it
+# was compiled by nothing; its `priv_name` had drifted from
+# kernel/privilege.mt's because the flat namespace never made them meet.
+src/userspace/shell.mt
 src/boot.mt
 
 # --- the demonstrations (src/demos/tmin2.mt also carries the expect_* helpers)
@@ -64,6 +75,7 @@ src/demos/inode.mt
 src/demos/perms.mt
 src/demos/fdtable.mt
 src/demos/tritfs.mt
+src/demos/shell.mt
 src/demos/messages.mt
 src/demos/pipe.mt
 src/demos/trit_stream.mt

@@ -29,14 +29,30 @@ fn perms_demo() {
     io::println("  Access type:      +1=read  0=write  -1=execute");
     io::println("");
 
-    let tty = Inode { ino: 2, itype: -, perm: +, size: 0, data_addr: 0,
-                      name: "/dev/tty", parent_ino: 1, valid: true };
-    let proc_d = Inode { ino: 3, itype: 0, perm: -, size: 0, data_addr: 0,
-                         name: "/proc", parent_ino: 0, valid: true };
-    let bin = Inode { ino: 5, itype: 0, perm: 0, size: 0, data_addr: 0,
-                      name: "/bin", parent_ino: 0, valid: true };
-    let tmp = Inode { ino: 4, itype: 0, perm: +, size: 0, data_addr: 0,
-                      name: "/tmp", parent_ino: 0, valid: true };
+    // Built through `make_inode` rather than spelled out. These were the last
+    // four bare Inode literals and all four broke at once when the struct
+    // gained `content` in §3 -- the same failure the PCB literals had in §2.0.
+    let tty    = make_inode(2, -, +, "/dev/tty", 1);
+    let proc_d = make_inode(3, 0, -, "/proc",    0);
+    let bin    = make_inode(5, 0, 0, "/bin",     0);
+    let tmp    = make_inode(4, 0, +, "/tmp",     0);
+
+    // The unix mapping, §3. A trit round-trips through unix and back; a unix
+    // mode does NOT round-trip through a trit, because 0644 says "read yes,
+    // write yes, execute no" and there is no such trit.
+    expect_int("perms: rwx maps to 0755", perm_to_unix(+), 493);
+    expect_int("perms: r-x maps to 0555", perm_to_unix(0), 365);
+    expect_int("perms: r-- maps to 0444", perm_to_unix(-), 292);
+    expect_trit("perms: 0755 reads back as rwx", unix_to_perm(493), +);
+    expect_trit("perms: 0555 reads back as r-x", unix_to_perm(365), 0);
+    expect_trit("perms: 0444 reads back as r--", unix_to_perm(292), -);
+    // The lossy direction, asserted rather than described: 0644 is writable,
+    // so the least authority consistent with its owner triad is rwx, and
+    // mapping back out gives 0755 and not 0644.
+    expect_trit("perms: 0644 projects to rwx (there is no rw-)", unix_to_perm(420), +);
+    expect_int("perms: and so 0644 does not survive the round trip",
+               perm_to_unix(unix_to_perm(420)), 493);
+    io::println("");
 
     io::println("--- /dev/tty (rwx = +1) ---");
     perm_check_all(tty);

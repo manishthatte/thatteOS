@@ -80,6 +80,14 @@ fn main() {
     let mut replace_q     = "";
     let mut find_result   = -1;
     let mut undo_stack    = "";        // plain-text snapshots for Ctrl+Z, \r-separated
+    // REDO, added 30 August 2026 — ENHANCEMENT_PLAN §5.2.
+    // buffer.mt's header has said "gap buffer, cursor navigation, undo/redo"
+    // since it was written and the file provided `undo_push`, `undo_pop` and
+    // `undo_stack_without_last` and nothing else: there was no redo stack and
+    // no Ctrl+Y arm. The three helpers are generic over a stack string, so
+    // redo needs no new buffer code — only a second stack and the discipline
+    // of keeping the two consistent.
+    let mut redo_stack    = "";
     // Sidebar
     let mut cwd           = ".";
     let mut ft_sel        = 0;
@@ -165,7 +173,8 @@ fn main() {
                 draw_sidebar(cwd,
                              if str_len(open_files) > 0 { ed_tab_file(open_files, active_ed_tab) } else { "" },
                              ft_sel, ft_scroll, git_out,
-                             ctx_row, ctx_x, ctx_y, mx, my, top_bar, bot_bar);
+                             make_ctx(ctx_row, ctx_x, ctx_y),
+                             make_view(top_bar, bot_bar, mx, my));
             }
             // Open-file tab bar
             let ed_tab_top = top_bar;
@@ -181,7 +190,8 @@ fn main() {
 
         } elif active_tab == TAB_EXPLORER() {
             draw_explorer(ex_cwd_l, ex_cwd_r, ex_sel_l, ex_sel_r,
-                          ex_scroll_l, ex_scroll_r, ex_pane, top_bar, bot_bar, mx, my);
+                          ex_scroll_l, ex_scroll_r, ex_pane,
+                          make_view(top_bar, bot_bar, mx, my));
             if ex_dlg_vis == 7 {
                 draw_input_dialog("New Folder", "Folder name:", ex_dlg_input, mx, my);
             } elif ex_dlg_vis == 8 {
@@ -191,14 +201,14 @@ fn main() {
         } elif active_tab == TAB_BROWSER() {
             let can_back = if br_hist_pos < text_line_count(br_hist) - 1 { 1 } else { 0 };
             let can_fwd  = if br_hist_pos > 0 { 1 } else { 0 };
-            draw_browser(br_url, br_content, br_total, br_scroll,
-                         br_status, br_addr_focus, can_back, can_fwd,
-                         top_bar, bot_bar, mx, my);
+            draw_browser(br_url, br_content, br_total, br_scroll, br_status,
+                         make_nav(br_addr_focus, can_back, can_fwd),
+                         make_view(top_bar, bot_bar, mx, my));
 
         } elif active_tab == TAB_EMAIL() {
             draw_email(em_folder, em_sel, em_scroll, em_show_body,
-                       em_compose, em_to, em_sub, em_body, em_field,
-                       top_bar, bot_bar, mx, my);
+                       make_compose(em_compose, em_to, em_sub, em_body, em_field),
+                       make_view(top_bar, bot_bar, mx, my));
 
         } elif active_tab == TAB_TERMINAL() {
             draw_terminal(term_output, term_cmd, term_scroll, top_bar, bot_bar, mx, my);
@@ -416,11 +426,27 @@ fn main() {
                         if k == gui_key_s() {
                             if str_len(cur_file) > 0 { fs_write_file(cur_file, buf_text(buf)); dirty = 0; }
                         } elif k == gui_key_z() {
-                            // Undo: pop the last snapshot from the undo stack
+                            // Undo: pop the last snapshot from the undo stack,
+                            // pushing what is on screen onto the redo stack
+                            // FIRST -- otherwise the text being replaced is
+                            // gone and Ctrl+Y has nothing to restore.
                             let prev = undo_pop(undo_stack);
                             if str_len(prev) > 0 {
+                                redo_stack = undo_push(redo_stack, buf_text(buf));
                                 undo_stack = undo_stack_without_last(undo_stack);
                                 buf = buf_new(str_concat(prev, ""));
+                                dirty = 1;
+                            }
+                        } elif k == gui_key_y() {
+                            // Redo: the mirror image. What comes off the redo
+                            // stack goes on screen, and what was on screen goes
+                            // back onto the undo stack, so alternating Ctrl+Z
+                            // and Ctrl+Y walks the history in both directions.
+                            let nxt = undo_pop(redo_stack);
+                            if str_len(nxt) > 0 {
+                                undo_stack = undo_push(undo_stack, buf_text(buf));
+                                redo_stack = undo_stack_without_last(redo_stack);
+                                buf = buf_new(str_concat(nxt, ""));
                                 dirty = 1;
                             }
                         } elif k == gui_key_c() {
@@ -516,7 +542,14 @@ fn main() {
                     }
 
                     // Push undo snapshot if text changed
-                    if buf_text(buf) != old_text { undo_stack = undo_push(undo_stack, str_concat(old_text, "")); }
+                    if buf_text(buf) != old_text {
+                        undo_stack = undo_push(undo_stack, str_concat(old_text, ""));
+                        // A NEW EDIT INVALIDATES THE REDO HISTORY. Without
+                        // this, Ctrl+Z, then a keystroke, then Ctrl+Y restores
+                        // a future that the keystroke replaced -- the text
+                        // would jump to a state the user never returned to.
+                        redo_stack = "";
+                    }
 
                     // Auto-scroll cursor into view
                     let cur_ln3 = buf_line(buf);

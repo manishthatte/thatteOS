@@ -130,43 +130,156 @@ fn launch_init(sr: StatusReg) -> StatusReg {
 
 
 
-fn scheduler_run_demo() {
-    io::println("[SCHED] scheduler_run: one scheduling pass over 9 PCBs");
+// admit_boot_processes: put the boot process set into THE process table.
+//
+// REPLACES `scheduler_run_demo`, 30 August 2026 -- ENHANCEMENT_PLAN §2.0.
+// That function was a FOURTH re-implementation of the scheduler, living in
+// this file, walking its own hardcoded `pids`/`states` arrays and printing
+// what a scheduler would do. Phase 1 dropped eight such stubs from boot.mt;
+// this one survived them because it did not print `[BOOT]`.
+//
+// THAT IS WORTH KEEPING: the suite's "no module re-implemented in boot.mt" row
+// greps for `[BOOT] interrupt_init`, `[BOOT] vmem_init`, `[BOOT] syscall_init`
+// and `[BOOT] process_init` -- it catches a stub that announces itself as boot.
+// This stub announced itself as `[SCHED] scheduler_run:`, the real module's own
+// prefix, so the guard could not see it, and the row above it -- "kernel:
+// scheduler pass completes", which greps for "[SCHED] scheduler_run: pass
+// complete" -- was being satisfied BY THE STUB. A guard keyed on the impostor
+// naming itself cannot catch an impostor that uses the real name.
+//
+// The nine states are kept from the retired stub deliberately: one pass over
+// them exercises all three TBRANCH arms (ACTIVE +, DORMANT 0, TERMINAL -),
+// which is the coverage the boot sequence is here to demonstrate. What has
+// changed is that they are now PCBs in the table the rest of the kernel holds,
+// scheduled by kernel/scheduler.mt, instead of integers in a local array
+// narrated by this file.
+// event_loop: the kernel's steady state, three ticks of it.
+//
+// Every subsystem below was reachable from boot before §2 and none of them
+// reached EACH OTHER: the timer printed "-> scheduler_run() invoked", the
+// scheduler built its own table and discarded it, and the syscall layer never
+// consulted a capability. This is those four modules connected.
+fn event_loop(t: ProcTable, sr: StatusRegister) {
+    io::println("[BOOT] event loop: interrupt -> timer -> scheduler, 3 ticks");
 
-    let pids: [int]   = [1, 2, 3, 4, 5, 6, 7, 8, 9];
-    let states: [int] = [3, 2, 0, -1, -2, -3, -4, -5, 3];
+    let mut timer = timer_init();
+    let mut queue = sleep_queue_init();
+    let mut irq = irq_state_init();
 
-    let mut i = 0;
-    while i < 9 {
-        let pid = pids[i];
-        let state = states[i];
-        let primary = get_primary(state);
+    // The init process asks to sleep, so the loop has a sleeper to wake and
+    // the timer's queue is exercised rather than merely initialised.
+    queue = sys_sleep(timer, queue, 1, 2);
 
-        io::print("  PID=");
-        io::print_int(pid);
-        io::print(" state=");
-        io::print(state_name(state));
-        io::print("(");
-        io::print_int(state);
-        io::print(") primary=");
-        io::print_trit(primary);
-        io::print(" => ");
+    let mut tick = 0;
+    while tick < 3 {
+        io::print("  --- tick ");
+        io::print_int(tick + 1);
+        io::println(" ---");
 
-        tif primary {
-            + => {
-                io::println("ACTIVE  — dispatch_active: restore PC/SP, resume");
-            }
-            0 => {
-                io::println("DORMANT — check_wakeup: inspect wakeup condition");
-            }
-            - => {
-                io::println("TERMINAL — reap_process: free pages, remove PCB");
+        // The timer interrupt is vector 0.
+        irq = interrupt_dispatch(0, irq);
+
+        // timer_tick wakes due sleepers INTO the table and, when the quantum
+        // expires, runs the scheduler over it.
+        let r = timer_tick(timer, queue, t);
+        timer = r.timer;
+        queue = r.queue;
+
+        irq = interrupt_return(irq);
+
+        // A REAL SYSCALL, through the capability gate (§2.3).
+        //
+        // The gate was enforced at `syscall_dispatch` and every caller was in
+        // `src/demos/syscall.mt`, so nothing in the RUNNING kernel ever passed
+        // through it. The running process issues SYS_YIELD each tick, which is
+        // one of the two syscalls that require no capability -- a process may
+        // always give the CPU up -- and on the last tick it also attempts
+        // SYS_MOD_LOAD, which its ring does not permit. Both answers are
+        // printed, so boot shows the gate allowing and refusing.
+        if t.current >= 0 {
+            let running = slot_at(t, t.current);
+            let _y = syscall_dispatch(-1, 0, 0, running);
+            if tick == 2 {
+                // Issued BY INIT, which runs at USER(-1) and therefore holds
+                // user_caps: CAN_MOD is withheld. Aimed at init specifically
+                // rather than at whoever happens to be current, because the
+                // point of the row is the RING, and idle runs at KERNEL where
+                // the same call is legitimately allowed.
+                let ii = table_find(t, 1);
+                if ii >= 0 {
+                    io::println("  [BOOT] init (USER) attempts SYS_MOD_LOAD:");
+                    let denied = syscall_dispatch(10, 16384, 0, slot_at(t, ii));
+                    if denied == EPERM() {
+                        io::println("  [BOOT] refused — capability enforcement is live");
+                    }
+                }
             }
         }
-        i = i + 1;
+
+        tick = tick + 1;
     }
-    io::println("[SCHED] scheduler_run: pass complete");
+
+    io::print("  [BOOT] after 3 ticks: ");
+    io::print_int(table_live(t));
+    io::print(" live of ");
+    io::print_int(t.count);
+    io::println(" admitted");
+    uptime(timer);
 }
+
+fn admit_boot_processes(t: ProcTable) {
+    io::println("[BOOT] admitting the boot process set to the process table");
+
+    // TWO PROCESSES -- the ones this boot sequence actually creates. `idle` is
+    // PID 0 and `launch_init` above spawns PID 1 at USER, which the line
+    // "init process spawned: PID=1 state=READY(+3)" reports.
+    //
+    // The retired `scheduler_run_demo` walked NINE hardcoded states here, and
+    // the first version of this function inherited that set. It did not fit,
+    // and the way it failed is worth keeping. PCB carries a CapWord since
+    // §2.3, so one costs ~21 words of the 2,536-word T3 heap (report.txt P63);
+    // nine placeholders plus nine admissions plus the rest of boot crossed it.
+    // Sometimes that traps --
+    //     TRAP: heap exhausted allocating 10 word(s) at 65533 (limit 65536)
+    // -- and sometimes it does NOT, which is the part to remember: with the
+    // pressure slightly lower the kernel ran on and the table came back
+    // CORRUPTED instead, five of nine slots holding values like 6589397959
+    // and 63000, the latter being HEAP_BASE itself. Hosted was correct
+    // throughout, so the only instrument that could see it was the suite's
+    // byte-identical row.
+    //
+    // The nine-state coverage was not lost, it was moved to where it belongs:
+    // `src/demos/scheduler.mt` builds the nine-PCB table and asserts against
+    // it, and `build/kernel_demos` is hosted-only, so it is not spending a
+    // budget the target has. Boot demonstrating seven processes it never
+    // created was the stub's habit, not a requirement.
+    // THE RINGS ARE REAL, and they were not. `make_pcb_prio` hardcodes
+    // privilege 0 (SERVICE) because the scheduler that used it only cared
+    // about priority -- so the PCB for init said SERVICE while `launch_init`
+    // ten lines above printed "init: running at USER privilege (-1)". The
+    // process table disagreed with the boot sequence about its own processes,
+    // and once §2.3 made capabilities derive from the ring that stopped being
+    // cosmetic: init held service_caps and could have loaded a kernel module.
+    //
+    // Built with `make_pcb`, which takes the privilege, and the priority set
+    // after -- rather than `make_pcb_prio`, which takes the priority and
+    // assumes the privilege.
+    let idle_pcb = make_pcb(0, 3, +, 0);      // idle:  KERNEL(+1), READY
+    idle_pcb.priority = +;                     //        HIGH
+    let init_pcb = make_pcb(1, 4, -, 0);      // init:  USER(-1), EXECUTING
+    init_pcb.priority = 0;                     //        NORMAL
+    let idle = table_admit(t, idle_pcb);
+    let init = table_admit(t, init_pcb);
+    if idle < 0 || init < 0 {
+        io::println("  process table full — cannot admit");
+    }
+    io::print("  admitted: ");
+    io::print_int(t.count);
+    io::print(" processes, ");
+    io::print_int(table_live(t));
+    io::println(" of them live");
+}
+
 
 // ---------------------------------------------------------------------------
 // kernel_main — boot entry point
@@ -194,8 +307,8 @@ fn kernel_main() {
     interrupt_init();
     io::println("");
 
-    // Step 2: Process table init
-    process_init();
+    // Step 2: Process table init — and it now RETURNS the table it announces.
+    let ptable = process_init();
     io::println("");
 
     // Step 3: Virtual memory init
@@ -218,8 +331,24 @@ fn kernel_main() {
     sr = launch_init(sr);
     io::println("");
 
-    // Step 7: Scheduler demonstration
-    scheduler_run_demo();
+    // Step 7: the first scheduling pass, over THE process table
+    admit_boot_processes(ptable);
+    io::println("");
+    scheduler_run(ptable);
+    io::println("");
+
+    // Step 8: the event loop — ENHANCEMENT_PLAN §2.5
+    //
+    // Interrupt -> timer -> scheduler, over ONE process table, for three
+    // ticks. §2.5 was written as a fifth item; it is really §2.0 finished,
+    // because once the table is threaded the loop is just what threads it.
+    //
+    // Three ticks and not thirty, for a measured reason: the quantum is three,
+    // so this is exactly one quantum and the loop shows the preemption that
+    // ends it. The T3 image and heap both have to hold, and a kernel that
+    // demonstrates a scheduler by running it forever cannot also fit under
+    // 60,000 words with room to grow (report.txt P38, P63).
+    event_loop(ptable, sr);
     io::println("");
 
     io::println("========================================");

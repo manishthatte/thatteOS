@@ -217,50 +217,71 @@ fn sys_close(fd_num: int, fd_table: FdTable) -> CloseResult {
 // sys_read: read N trytes from fd into buf
 // ---------------------------------------------------------------------------
 
-fn sys_read(fd_num: int, buf_addr: int, len: int) -> int {
-    io::print("[SYS_READ] fd=");
-    io::print_int(fd_num);
-    io::print(" buf=");
-    io::print_int(buf_addr);
-    io::print(" len=");
-    io::println_int(len);
-    if fd_num < 0 || fd_num > 8 {
-        io::println("  ERROR: invalid fd — EBADF");
-        return -1;
-    }
-    if len <= 0 {
-        io::println("  ERROR: invalid length — EINVAL");
-        return -1;
-    }
-    io::print("  read ");
-    io::print_int(len);
-    io::println(" trytes");
-    return len;
-}
+// sys_read / sys_write — ENHANCEMENT_PLAN §3.
+//
+// These returned `len` having touched nothing: an inode had a `size` and a
+// `data_addr` and no data, so "read 4 trytes" was a sentence. They now resolve
+// the fd to its inode, CHECK THE PERMISSION, and move the bytes.
+//
+// The permission check is the part worth stating. It was not merely absent --
+// `check_permission` in fs/perms.mt existed and had no caller outside its own
+// demo, which is the same shape as §2.3's `enforce`. Read asks for access `+`
+// and write asks for access `0`, and under the trit model of fs/perms.mt a
+// write is refused by BOTH r-x and r--.
+//
+// `buf_addr` is retained in the signature and is still not dereferenced: it is
+// the address a real device would DMA to, and this kernel has no user address
+// space to copy into. What has changed is that the DATA now exists.
 
-// ---------------------------------------------------------------------------
-// sys_write: write N trytes from buf to fd
-// ---------------------------------------------------------------------------
-
-fn sys_write(fd_num: int, buf_addr: int, len: int) -> int {
+fn sys_write_data(fs: TritFS, fd_table: FdTable, fd_num: int, data: str) -> int {
     io::print("[SYS_WRITE] fd=");
     io::print_int(fd_num);
-    io::print(" buf=");
-    io::print_int(buf_addr);
-    io::print(" len=");
-    io::println_int(len);
+    io::print(" bytes=");
+    io::println_int(str::len(data));
     if fd_num < 0 || fd_num > 8 {
         io::println("  ERROR: invalid fd — EBADF");
         return -1;
     }
-    if len <= 0 {
-        io::println("  ERROR: invalid length — EINVAL");
+    let desc = fd_table_get(fd_table, fd_num);
+    if !desc.valid {
+        io::println("  ERROR: fd is not open — EBADF");
         return -1;
     }
+    let inode = fs_inode_at(fs, desc.ino);
+    if !check_permission(inode, 0) {
+        io::println("  ERROR: write denied by inode permission — EACCES");
+        return -1;
+    }
+    let _ok = fs_set_content(fs, desc.ino, data);
     io::print("  wrote ");
-    io::print_int(len);
-    io::println(" trytes");
-    return len;
+    io::print_int(str::len(data));
+    io::print(" bytes to ");
+    io::println(inode.name);
+    return str::len(data);
+}
+
+fn sys_read_data(fs: TritFS, fd_table: FdTable, fd_num: int) -> str {
+    io::print("[SYS_READ] fd=");
+    io::println_int(fd_num);
+    if fd_num < 0 || fd_num > 8 {
+        io::println("  ERROR: invalid fd — EBADF");
+        return "";
+    }
+    let desc = fd_table_get(fd_table, fd_num);
+    if !desc.valid {
+        io::println("  ERROR: fd is not open — EBADF");
+        return "";
+    }
+    let inode = fs_inode_at(fs, desc.ino);
+    if !check_permission(inode, +) {
+        io::println("  ERROR: read denied by inode permission — EACCES");
+        return "";
+    }
+    io::print("  read ");
+    io::print_int(inode.size);
+    io::print(" bytes from ");
+    io::println(inode.name);
+    return inode.content;
 }
 
 // ---------------------------------------------------------------------------

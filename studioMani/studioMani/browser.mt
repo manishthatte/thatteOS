@@ -91,17 +91,16 @@ fn hist_fwd_url(stack: str, hist_pos: int) -> str {
 
 // ── Browser draw ──────────────────────────────────────────────────────────────
 fn draw_browser(url_buf: str, content: str, br_total: int, br_scroll: int,
-                status: str, addr_focused: int, can_back: int, can_fwd: int,
-                top_y: int, bot_y: int, mx: int, my: int) {
+                status: str, nav: NavState, v: View) {
     let ww  = gui_window_width();
     let fh  = gui_font_height();
 
     c_editor();
-    gui_fill_rect(0, top_y, ww, bot_y - top_y);
+    gui_fill_rect(0, v.top_y, ww, v.bot_y - v.top_y);
 
     // Address bar
     let addr_h = 36;
-    let addr_y = top_y;
+    let addr_y = v.top_y;
     gui_set_color(238, 232, 213, 255);
     gui_fill_rect(0, addr_y, ww, addr_h);
     c_border();
@@ -111,23 +110,23 @@ fn draw_browser(url_buf: str, content: str, br_total: int, br_scroll: int,
     let btn_h = addr_h - 8;
 
     // Back / Fwd / Refresh buttons
-    if can_back == 1 { c_accent(); } else { c_dim(); }
-    let bx2  = draw_btn("◀", L_MARGIN(), btn_y, 32, btn_h, mx, my);
-    if can_fwd == 1 { c_accent(); } else { c_dim(); }
-    let bx3  = draw_btn("▶", bx2, btn_y, 32, btn_h, mx, my);
-    let bx4  = draw_btn("↺", bx3, btn_y, 32, btn_h, mx, my);
+    if nav.can_back == 1 { c_accent(); } else { c_dim(); }
+    let bx2  = draw_btn("◀", L_MARGIN(), btn_y, 32, btn_h, v.mx, v.my);
+    if nav.can_fwd == 1 { c_accent(); } else { c_dim(); }
+    let bx3  = draw_btn("▶", bx2, btn_y, 32, btn_h, v.mx, v.my);
+    let bx4  = draw_btn("↺", bx3, btn_y, 32, btn_h, v.mx, v.my);
     let go_x = ww - L_MARGIN() - 48;
-    draw_btn_accent("Go", go_x, btn_y, 48, btn_h, mx, my);
+    draw_btn_accent("Go", go_x, btn_y, 48, btn_h, v.mx, v.my);
 
     // URL box
     let box_x = bx4 + 4;
     let box_w = go_x - box_x - 8;
     let box_y = addr_y + 4;
     let box_h = addr_h - 8;
-    if addr_focused == 1 { gui_set_color(253, 246, 227, 255); }
+    if nav.addr_focused == 1 { gui_set_color(253, 246, 227, 255); }
     else                 { gui_set_color(245, 238, 220, 255); }
     gui_fill_rect(box_x, box_y, box_w, box_h);
-    if addr_focused == 1 { c_accent(); } else { c_border(); }
+    if nav.addr_focused == 1 { c_accent(); } else { c_border(); }
     gui_draw_rect(box_x, box_y, box_w, box_h);
     if str_len(url_buf) == 0 {
         c_dim();
@@ -136,15 +135,15 @@ fn draw_browser(url_buf: str, content: str, br_total: int, br_scroll: int,
         c_white();
         gui_draw_text(url_buf, box_x + 6, box_y + (box_h - fh) / 2);
     }
-    if addr_focused == 1 {
+    if nav.addr_focused == 1 {
         let ucw = gui_text_width(url_buf);
         c_cursor();
         gui_draw_line(box_x + 6 + ucw, box_y + 3, box_x + 6 + ucw, box_y + box_h - 3);
     }
 
     // Content area
-    let ct   = top_y + addr_h + 2;
-    let cb   = bot_y - 26;
+    let ct   = v.top_y + addr_h + 2;
+    let cb   = v.bot_y - 26;
     let vis  = (cb - ct) / L_LINE();
 
     let mut r = 0;

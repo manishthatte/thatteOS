@@ -196,7 +196,45 @@ fn dispatch_negative_syscall(num: int, a: int, b: int) -> int {
 // syscall_dispatch: main dispatcher — TBRANCH on sign(R1)
 // ---------------------------------------------------------------------------
 
-fn syscall_dispatch(r1: int, r2: int, r3: int) -> int {
+// required_cap: the capability a syscall demands, or -1 for none.
+//
+// ENHANCEMENT_PLAN §2.3. `enforce` has existed in security/capability.mt since
+// the module was written and had NINE callers, all nine of them inside
+// `src/demos/capability.mt`. No syscall consulted a capability, so the nine
+// trits of a CapWord decided nothing: a USER process could SYS_MOD_LOAD.
+//
+// Two syscalls require nothing and that is deliberate rather than an omission.
+// SYS_EXIT(3): a process that may not exit cannot be terminated by its own
+// cooperation, which turns every capability fault into a stuck process.
+// SYS_YIELD(-1): yielding gives the CPU up, and a scheduler that can be denied
+// a voluntary yield is a scheduler a process can monopolise by having FEWER
+// rights. Both are the "you may always give something up" rule.
+fn required_cap(num: int) -> int {
+    if num == 1 { return 0; }         // SYS_FORK       -> CAN_FORK
+    elif num == 2 { return 1; }       // SYS_EXEC       -> CAN_EXEC
+    elif num == 3 { return -1; }      // SYS_EXIT       -> none, see above
+    elif num == 5 { return 6; }       // SYS_ALLOC      -> CAN_ALLOC
+    elif num == 6 { return 6; }       // SYS_FREE       -> CAN_ALLOC
+    elif num == 10 { return 4; }      // SYS_MOD_LOAD   -> CAN_MOD
+    elif num == 11 { return 4; }      // SYS_MOD_UNLOAD -> CAN_MOD
+    elif num == -1 { return -1; }     // SYS_YIELD      -> none, see above
+    elif num == -2 { return 5; }      // SYS_PRIV_SET   -> CAN_PRIV
+    elif num == -4 { return 2; }      // SYS_RECV       -> CAN_IPC
+    elif num == -5 { return 2; }      // SYS_SEND       -> CAN_IPC
+    elif num == -10 { return 8; }     // SYS_CLOSE      -> CAN_FS
+    elif num == -11 { return 8; }     // SYS_OPEN       -> CAN_FS
+    elif num == -12 { return 8; }     // SYS_READ       -> CAN_FS
+    elif num == -13 { return 8; }     // SYS_WRITE      -> CAN_FS
+    else { return -1; }
+}
+
+// EPERM: the return for a syscall refused on capability grounds. Distinct from
+// -1, which every handler already uses for its own failures -- a caller that
+// cannot tell "the open failed" from "you were not allowed to open" cannot
+// react differently to them.
+fn EPERM() -> int { return -9; }
+
+fn syscall_dispatch(r1: int, r2: int, r3: int, caller: PCB) -> int {
     let sign_r1: trit = if r1 > 0 { + }
                          elif r1 < 0 { - }
                          else { 0 };
@@ -207,6 +245,17 @@ fn syscall_dispatch(r1: int, r2: int, r3: int) -> int {
     io::print(syscall_name(r1));
     io::print(") sign=");
     io::println_trit(sign_r1);
+
+    // --- capability gate, before any handler runs (§2.3) ---
+    let need = required_cap(r1);
+    if need >= 0 {
+        if !enforce(caller.caps, need, syscall_name(r1)) {
+            io::print("  [SYSCALL] refused for PID=");
+            io::print_int(caller.pid);
+            io::println(" — EPERM");
+            return EPERM();
+        }
+    }
 
     // --- TBRANCH 3-way dispatch on sign(R1) ---
     tif sign_r1 {

@@ -213,3 +213,77 @@ fn draw_statusbar(open_file: str, ln: int, col: int, mode: str, dirty: int) {
     gui_draw_text(pos_s, ww - pw - 60, y + (L_STATUSBAR() - fh) / 2);
     gui_draw_text("UTF-8", ww - 52, y + (L_STATUSBAR() - fh) / 2);
 }
+
+
+// ---------------------------------------------------------------------------
+// PARAMETER GROUPS — the T3 calling convention, 30 August 2026
+// ---------------------------------------------------------------------------
+//
+// ENHANCEMENT_PLAN §6 asks for one measurement before its fork is decided:
+// compile the merged IDE with `--target t3` and read the image size. It does
+// not get that far. The build fails in the code generator, not the assembler:
+//
+//     [T3ISA] `draw_sidebar` takes 12 parameters, but the T3 calling
+//     convention passes arguments only in R1-R8 and has no stack argument
+//     area. Pass the extra values in a struct, or split the function.
+//
+// That is the defect Phase 1 found in `kernel/context.mt`, where `context_save`
+// took 13 parameters and `context_switch` 15, and it has the same cause: LLVM
+// has no such limit, so a signature like this compiles and runs hosted for
+// months while the two backends disagree about whether the module is legal.
+//
+// The population is small and was measured rather than guessed: FIVE functions
+// in the whole repository exceed eight parameters, all five of them studioMani
+// draw functions. `src/`, `userspace/` and `thatteos.mt` are clean.
+//
+// These are the groups. They are not arbitrary bundles to get under a limit --
+// each is a thing the drawing code already passes around together.
+
+// The drawing viewport plus the mouse: every draw function's last four
+// arguments were `top_y, bot_y, mx, my`.
+struct View {
+    pub top_y: int,
+    pub bot_y: int,
+    pub mx: int,
+    pub my: int,
+}
+
+fn make_view(top_y: int, bot_y: int, mx: int, my: int) -> View {
+    return View { top_y: top_y, bot_y: bot_y, mx: mx, my: my };
+}
+
+// The sidebar's context menu: which row it is on and where it was opened.
+struct CtxMenu {
+    pub row: int,
+    pub x: int,
+    pub y: int,
+}
+
+fn make_ctx(row: int, x: int, y: int) -> CtxMenu {
+    return CtxMenu { row: row, x: x, y: y };
+}
+
+// The browser's navigation state: the three flags that decide how the address
+// bar and the back/forward buttons are drawn.
+struct NavState {
+    pub addr_focused: int,
+    pub can_back: int,
+    pub can_fwd: int,
+}
+
+fn make_nav(addr_focused: int, can_back: int, can_fwd: int) -> NavState {
+    return NavState { addr_focused: addr_focused, can_back: can_back, can_fwd: can_fwd };
+}
+
+// The email compose form: five fields that are only ever read together.
+struct Compose {
+    pub mode: int,
+    pub to: str,
+    pub sub: str,
+    pub body: str,
+    pub field: int,
+}
+
+fn make_compose(mode: int, to: str, sub: str, body: str, field: int) -> Compose {
+    return Compose { mode: mode, to: to, sub: sub, body: body, field: field };
+}

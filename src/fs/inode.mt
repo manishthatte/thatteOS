@@ -47,17 +47,24 @@ struct Inode {
     pub name: str,
     pub parent_ino: int,
     pub valid: bool,
+    // THE FILE'S CONTENTS — ENHANCEMENT_PLAN §3.
+    // `sys_read` and `sys_write` returned a byte count having touched nothing,
+    // because an inode had a `size` and a `data_addr` and no data. `data_addr`
+    // is still the address a real device would DMA to; `content` is what the
+    // hosted kernel actually stores, and `size` is now derived from it rather
+    // than asserted beside it.
+    pub content: str,
 }
 
 fn make_inode(ino: int, itype: trit, perm: trit, name: str, parent: int) -> Inode {
     return Inode { ino: ino, itype: itype, perm: perm,
                    size: 0, data_addr: 0, name: name,
-                   parent_ino: parent, valid: true };
+                   parent_ino: parent, valid: true, content: "" };
 }
 
 fn empty_inode() -> Inode {
     return Inode { ino: 0, itype: 0, perm: 0, size: 0, data_addr: 0,
-                   name: "", parent_ino: 0, valid: false };
+                   name: "", parent_ino: 0, valid: false, content: "" };
 }
 
 fn print_inode(inode: Inode) {
@@ -102,6 +109,42 @@ fn tritfs_init() -> TritFS {
         i3: proc_d, i4: tmp, i5: bin,
         i6: empty_inode(), i7: empty_inode(), i8: empty_inode(),
     };
+}
+
+// fs_inode_at / fs_set_content: indexing and mutation over the nine slots.
+//
+// Same rule as the process table (kernel/process.mt): `fs_inode_at` returns a
+// COPY, so it reads and never writes, and every mutation dispatches on the
+// FIELD directly. A struct returned from a function is a copy in this
+// language; a struct parameter is a mutable reference.
+fn fs_inode_at(fs: TritFS, ino: int) -> Inode {
+    if ino == 0 { return fs.i0; }
+    elif ino == 1 { return fs.i1; }
+    elif ino == 2 { return fs.i2; }
+    elif ino == 3 { return fs.i3; }
+    elif ino == 4 { return fs.i4; }
+    elif ino == 5 { return fs.i5; }
+    elif ino == 6 { return fs.i6; }
+    elif ino == 7 { return fs.i7; }
+    else { return fs.i8; }
+}
+
+// Writes both the content AND the size, so the two cannot disagree.
+fn fs_set_content(fs: TritFS, ino: int, data: str) -> bool {
+    if ino < 0 || ino > 8 {
+        return false;
+    }
+    let n = str::len(data);
+    if ino == 0 { fs.i0.content = data; fs.i0.size = n; }
+    elif ino == 1 { fs.i1.content = data; fs.i1.size = n; }
+    elif ino == 2 { fs.i2.content = data; fs.i2.size = n; }
+    elif ino == 3 { fs.i3.content = data; fs.i3.size = n; }
+    elif ino == 4 { fs.i4.content = data; fs.i4.size = n; }
+    elif ino == 5 { fs.i5.content = data; fs.i5.size = n; }
+    elif ino == 6 { fs.i6.content = data; fs.i6.size = n; }
+    elif ino == 7 { fs.i7.content = data; fs.i7.size = n; }
+    else { fs.i8.content = data; fs.i8.size = n; }
+    return true;
 }
 
 // ---------------------------------------------------------------------------

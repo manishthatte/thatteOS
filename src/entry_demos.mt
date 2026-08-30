@@ -39,7 +39,7 @@ fn arg_is(i: int, want: str) -> bool {
 fn run_all_demos() {
     io::println("");
     io::println("########################################");
-    io::println("# module demonstrations (25)");
+    io::println("# module demonstrations (26)");
     io::println("########################################");
     tmin2_demo();      klog_demo();        privilege_demo();
     panic_demo();      guard_demo();       context_demo();
@@ -50,9 +50,21 @@ fn run_all_demos() {
     messages_demo();   pipe_demo();        trit_stream_demo();
     tty_demo();        syscall_demo();     capability_demo();
     photon_cap_demo();
+    // The kernel-side shell (§4). It needs live kernel state rather than
+    // nothing, so it builds the four structures it drives and admits the
+    // processes its `ps` and `kill` act on.
+    let sh_t = proc_table_init();
+    let sh_fs = tritfs_init();
+    let sh_sig = default_signal_table(3);
+    let sh_bank = context_bank_init();
+    let _s0 = table_admit(sh_t, make_pcb(0, 3, +, 0));
+    let _s1 = table_admit(sh_t, make_pcb(1, 4, -, 0));
+    let _s2 = table_admit(sh_t, make_pcb(2, 4, -, 0));   // the shell itself
+    let _s3 = table_admit(sh_t, make_pcb(3, 4, -, 0));
+    shell_demo(sh_t, sh_fs, sh_sig, sh_bank);
     io::println("");
     io::println("########################################");
-    io::println("# all 25 module demonstrations complete");
+    io::println("# all 26 module demonstrations complete");
     io::println("########################################");
 }
 

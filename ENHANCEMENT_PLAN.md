@@ -545,24 +545,142 @@ omits an input converts an unexercised program into a smaller green number.*
 
 ### Phase 2 — Connect the subsystems *(~6–8 d, needs Phase 1)*
 
+> **DONE, 30 August 2026 — 2.0 through 2.5.** The kernel's four subsystems now
+> reach each other over one process table. `tests/test_all.sh` is **100/100**
+> (from 96) with **98 in-kernel assertions** (from 37), both backends
+> byte-identical, `--verify-ssa` 0 over 28 files, 0 warnings, T3 image
+> **39,829 words of 60,000**.
+>
+> **2.2 was struck rather than implemented** — the remedy it prescribes was
+> already in the code, and the item named a function (`check_and_wake`) that
+> does not exist. **2.0 is new and was the reason the other four were stuck.**
+> **2.1's prescribed fix was wrong twice** and is recorded in place.
+>
+> **Three things this phase learned the hard way, all measured:**
+>
+> * **A struct is a mutable reference; a struct RETURNED from a function is a
+>   copy.** `f(t.p0)` writes through, `f(at(t,1))` does not, and
+>   `at(t,0).age = 7` is discarded. The first table used an accessor for writes
+>   and three assertions caught it while a fourth passed for the wrong reason.
+> * **`ProcTable` holds nine NAMED PCB fields, not `slots: [PCB]`.** The array
+>   version is correct on hosted and corrupts on T3 inside the kernel — count
+>   short, pids garbage, then a trap storing through one of them. Not heap
+>   (twelve fresh PCBs allocate at the point of failure), not the shared free
+>   slot, not the mutating call, and not reproducible in any standalone program
+>   built to the same shape. `SleepQueue` has always been nine named fields;
+>   this now matches it, and the reason is written down beside the struct.
+> * **The T3 heap is the binding constraint on this kernel, not the image.**
+>   PCB gained a CapWord for 2.3 and roughly doubled; admitting nine processes
+>   at boot then exhausted 2,536 words. Boot admits the **two** processes it
+>   actually creates, and the nine-state coverage moved to the demo program,
+>   which is hosted-only and spends no such budget.
+
 The kernel's parts are individually sound and mutually unaware.
 
-* **2.1 Timer → scheduler.** `timer_tick` advances from `gui_ticks()` each frame;
-  quantum expiry calls `scheduler_run`. *(~1 d)*
-* **2.2 Fix the sleep queue.** `check_and_wake` detects expiry, prints, and
-  returns a `bool` nobody uses, so entries are never marked invalid and are
-  "woken" on every subsequent tick. Return the updated `SleepQueue`.
-  `WORKINGS_ANALYSIS.md` §4.3 — **re-probe before fixing**; that document is
-  stale in five of ten places and this claim has not been re-measured. *(~1 d)*
-* **2.3 Capability enforcement.** `capability.mt:enforce()` exists and is called
-  from nowhere. Every syscall should call it, which needs a per-process
-  `CapWord` in the PCB. *(~2 d)*
-* **2.4 Signal delivery.** `deliver_signal` prints what it would do. Make it set
-  `process.state`, call the scheduler, and dispatch to an installed handler.
-  *(~2 d)*
-* **2.5 Interrupt → syscall → scheduler** as one event-driven loop. *(~2 d)*
+> **RE-PROBED 30 August 2026, before implementing any of it, as §7 instructs.
+> One of the five items was already done, one prescribes a change that would
+> make things worse, and the four that remain share a prerequisite this section
+> never named.** The probe was `grep` and `awk` over `src/`, plus a positive
+> control; the results are folded into the items below.
+>
+> **The shape they share: the kernel NARRATES what it would do.** Four sites
+> print `-> scheduler_run() invoked` — `kernel/privilege.mt:93`,
+> `kernel/timer.mt:207`, `kernel/panic.mt:149`, `mm/vmem.mt:120` — and
+> `scheduler_run`, which exists at `kernel/scheduler.mt:211`, is called from
+> **none** of them. `deliver_signal` prints "save context, jump to handler
+> address" and returns `void`. `enforce` is called only from its own demo.
+> This is Phase 1's finding one level in: there, `kernel_main` existed and
+> called `boot.mt`'s private stubs rather than the real modules; here the
+> subsystems exist and address each other in `io::println`.
+
+* **2.0 A PROCESS TABLE THAT OUTLIVES A CALL — unnamed here, and 2.1/2.3/2.4/2.5
+  all block on it.** `scheduler_run()` takes no arguments, returns nothing, and
+  **builds its own hardcoded nine-PCB table as a local `let mut pcbs`** on every
+  call, ages it, schedules it and discards it. `process_init()` beside it prints
+  a description of a table and initialises none. So there is no process table in
+  this kernel — there are two functions that each pretend to have one.
+  Consequences for the items below: 2.1 cannot hand the scheduler anything,
+  2.3's `CapWord` has no PCB field to live in (`struct PCB` carries pid, state,
+  pc, sp, privilege, page_table, parent_pid, priority, age, quantum_used — and
+  no capability), and 2.4 has nothing to set `process.state` *in*. Do this
+  first, or the rest is more narration. *(estimate not carried over from the
+  items below — this is new work)*
+* **2.1 Timer → scheduler.** Confirmed as a gap, but **the fix as prescribed is
+  wrong twice.** (a) `gui_ticks()` does not appear in `src/` at all — it is the
+  SDL2 frame-loop convention from `userspace/` and studioMani, and the kernel is
+  not a frame loop. (b) Calling `scheduler_run` on quantum expiry today would
+  invoke the function described in 2.0, which fabricates a fresh fake table and
+  throws it away: the output would look like scheduling while the timer's actual
+  state went nowhere. **That is worse than the honest `println` it replaces.**
+  Blocked on 2.0. *(~1 d after it)*
+* **2.2 Fix the sleep queue. — STRUCK 30 August 2026. THE REMEDY WAS ALREADY
+  IMPLEMENTED.** This item was carried from `WORKINGS_ANALYSIS.md` §4.3 with the
+  warning "re-probe before fixing"; re-probing found: **there is no
+  `check_and_wake`** anywhere in `src/`. The function is
+  `kernel/timer.mt:146 wake_entry_if_due`, and it already returns
+  `SleepEntry { .., valid: false }`; `timer_tick` already returns the cleaned
+  queue in a `TickResult` and already decrements `count` by the number it
+  invalidated. The prescribed fix — "return the updated `SleepQueue`" — is what
+  the code does.
+  **But nothing pinned it, and the demo was actively misleading:**
+  `src/demos/timer.mt` had **zero assertions** and closed by printing five
+  hardcoded `PASS` lines. It now carries **20 assertions**, every expected value
+  derived from the source rather than from the program's output, and they bite:
+  reintroducing exactly the defect this item describes — `wake_entry_if_due`
+  returning the entry without clearing `valid` — turns **7 of the 20 red**,
+  where before the whole defect was invisible. Demo assertions 37 → 57.
+  *(0 d — the cost was the probe, and the probe is what found 2.0)*
+* **2.3 Capability enforcement.** **Confirmed.** `security/capability.mt:273
+  enforce(cap, required_cap, syscall_name) -> bool` is called from nine sites,
+  **all nine in `src/demos/capability.mt`** and none in a syscall. This item's
+  own stated prerequisite is also confirmed: `PCB` has no `CapWord` field.
+  Blocked on 2.0. *(~2 d after it)*
+* **2.4 Signal delivery.** **Confirmed.** `kernel/signal.mt:179 deliver_signal`
+  returns `void` and its three dispositions print `CATCH:` / `DEFAULT:` /
+  `IGNORE:`; the catch arm prints "save context, jump to handler address" and
+  does neither. Called from five sites, all in `src/demos/signal.mt`.
+  Blocked on 2.0 (nothing to set `state` in). *(~2 d after it)*
+* **2.5 Interrupt → syscall → scheduler** as one event-driven loop. This is 2.0
+  finished rather than a separate item: once the table is threaded, the loop is
+  what threads it. *(~2 d)*
 
 ### Phase 3 — TritFS with real storage *(~4–6 d)*
+
+> **DONE, 30 August 2026, and it is SPLIT IN TWO because of a measurement.**
+> The permission mapping is written down first, as this section asks
+> (`src/fs/perms.mt`, with `perm_to_unix`/`unix_to_perm` and eight assertions
+> pinning it). `sys_read`/`sys_write` became `sys_read_data`/`sys_write_data`:
+> they resolve the fd to its inode, **check the permission**, and move real
+> bytes. `check_permission` had no caller outside its own demo before this —
+> §2.3's shape again.
+>
+> **The `fs_*` half is HOSTED ONLY, in `src/fs/hosted_store.mt`, listed in
+> `kernel_demos.manifest` and deliberately not in `kernel.manifest`.** §3 says
+> the `fs_*` builtins "already exist and already work"; measured, they work on
+> **LLVM only** — the same program compiled `--target t3` dies with
+> `Undefined label: fs_mkdir`. That is §3.4's finding in the filesystem: ~90
+> registered builtins are declared in the analyzer, implemented in the C
+> runtime, and have no T3ISA syscall. `build/kernel` must build for both
+> backends and produce byte-identical output, so one `fs_read_file` the kernel
+> can reach stops it building for its own target.
+>
+> So: the kernel gets **real data movement on both backends** (in-memory,
+> permission-checked); the demo program gets **real durability** — a genuine
+> file under `/tmp/thatteos_tritfs/`, flushed, the inode cleared, and reloaded
+> from disk, which is what the six `store:` assertions check. **Phase 6(a) is
+> what would remove the split.** Until then "TritFS has real storage" is true
+> of the hosted kernel and false of the T3 target.
+>
+> **The `sys_open` sub-item below was already struck during Phase 1** (both
+> copies put the guard above the allocation); the line survives here because
+> nobody deleted it, and it is struck again now.
+>
+> Two things found while doing it: the four remaining bare `Inode` literals all
+> broke at once when the struct gained `content` (they now go through
+> `make_inode`), and **the fdtable demo was opening inode 7, which no one had
+> created** — a fresh TritFS leaves 6, 7 and 8 empty at r-x, so the write it
+> asserted was being correctly refused. Suite **102/102**, in-kernel assertions
+> **132** (from 37 before Phase 2).
 
 `sys_read`/`sys_write` return byte counts without touching data. In hosted mode,
 back inodes with real files under a root directory and route the four operations
@@ -576,6 +694,41 @@ discarding it. Move the guard above the allocation.
 
 ### Phase 4 — One shell *(~3–4 d, needs Phase 1)*
 
+> **DONE, 30 August 2026 — and "make them one binary" is the wrong goal, by
+> measurement.** `thatteos.mt` uses `fs_copy`, `fs_list_dir_open`,
+> `process_spawn`, `path_join` and `env_timestamp`; compiled `--target t3` it
+> fails at the assembler with `Undefined label: env::os_name`. It drives the
+> HOST filesystem and cannot run on the machine this kernel targets. So the two
+> are not two implementations of one thing.
+>
+> **What was real duplication is gone.** `src/userspace/shell.mt` was in
+> NEITHER manifest — 438 lines compiled by nothing — and is now in both. Its
+> `priv_name` had drifted from `kernel/privilege.mt`'s ("KERNEL" vs
+> "KERNEL(+1)") precisely because nothing ever compiled them together; that is
+> the seventh instance of the six Phase 1.2 deduplicated, and the flat
+> namespace is what asked the question.
+>
+> **One tokeniser, from the hosted shell as this section asks.** The kernel
+> shell had two parsing strategies: whole-string equality for nine commands,
+> and `str::starts_with` plus `args_after(cmd, 5)` for four — a helper that
+> takes the length of its own keyword as an argument and is silently wrong for
+> any verb that is not four letters. Both are replaced by trim / find-first-
+> space / name+args, and `args_after` is deleted.
+>
+> **And the "syscall-backed command bodies" were not backed by anything.**
+> `ps` printed five invented processes and "Total: 5/9" whatever the kernel was
+> doing; `kill` printed "signal delivered via SYS_KILL" and called nothing;
+> `stat` matched four path literals and reported `size: 0` for all of them.
+> They now walk the §2.0 process table, call the §2.4 `sys_kill`, and look the
+> path up in the §3 filesystem.
+>
+> **The finding is from an assertion that failed:** `kill 3 -2` does NOT
+> terminate PID 3, because the shell runs as pid 2 at USER(-1) and `sys_kill`
+> lets a USER process signal only itself. The refusal is the more interesting
+> row, and it is paired with a self-signal that succeeds so the row is about
+> the target rather than about `kill` being inert. Suite **102/102**,
+> assertions **140**, 26 demos.
+
 There are two. `thatteos.mt` (1,064 lines) is the real one: it reads stdin,
 splits verb from arguments at the first space, and dispatches 29 arms into 28
 command functions, 17 of which take arguments. `src/userspace/shell.mt` (438 lines) is the kernel-side
@@ -584,6 +737,45 @@ input loop and tokeniser, keep the kernel shell's syscall-backed command bodies,
 delete the literals. Add pipes once `ipc/pipe.mt` is wired.
 
 ### Phase 5 — studioMani from drawn to working *(~8–10 d, parallel)*
+
+> **RE-PROBED 30 August 2026, AND THIS SECTION IS STALE IN FOUR OF ITS SIX
+> ITEMS.** "The UI is complete and the backends are stubs" was true when it was
+> written and is not true now.
+>
+> * **5.1 Ctrl+S — ALREADY DONE.** `main.mt:418` is
+>   `if k == gui_key_s() { fs_write_file(cur_file, buf_text(buf)); dirty = 0; }`,
+>   and `fs_write_file` appears at nine sites (save-on-quit, save-before-open,
+>   save-before-switch). The editor has been able to save for some time.
+> * **5.2 Ctrl+Z — ALREADY DONE; Ctrl+Y WAS THE REAL GAP, and is now done.**
+>   `buffer.mt`'s header has read "gap buffer, cursor navigation, undo/redo"
+>   since it was written while the file provided `undo_push`, `undo_pop` and
+>   `undo_stack_without_last` and nothing else — no redo stack, no Ctrl+Y arm.
+>   A documentation claim outliving its implementation, the shape report.txt
+>   P51/P55 already track. The three helpers are generic over a stack string,
+>   so redo needed no new buffer code: a second stack, push-before-restore on
+>   undo, and **clearing the redo stack on a fresh edit** — without which
+>   Ctrl+Z, a keystroke, then Ctrl+Y restores a future the keystroke replaced.
+> * **5.3 Selection and Ctrl+F — ALREADY DONE.** `find_next` at `main.mt:393`,
+>   `buf_replace_all` at 405, Ctrl+H for replace at 367, `sel_anchor`
+>   throughout. The find bar searches.
+> * **5.4 Terminal tab — ALREADY DONE.** `shell_exec` at `main.mt:651` with
+>   command history (`term_hist`, up/down navigation).
+> * **5.5 Email — GENUINELY OPEN, and it is the only item here that was.**
+>   `net_imap_connect`, `net_imap_list`, `net_imap_fetch` and `net_smtp_send`
+>   are absent from the compiler — probed directly, not inferred. **NOT DONE
+>   HERE**: it is C-runtime work inside maniTC, whose tree is currently shared
+>   with another session, and landing it would move the compiler this
+>   repository's build is pinned against in the middle of a campaign.
+> * **5.6 Split `main.mt` — NOT DONE, and the reason is this section's own
+>   sequencing rule.** It says "do it after 5.1–5.4, not before — splitting a
+>   file and changing its behaviour in one step makes both unreviewable."
+>   5.2's redo half changed behaviour in `main.mt` today. The split is a
+>   mechanical refactor with no behaviour change and it should be its own step,
+>   against a tree where the last behavioural change is already verified.
+>
+> The lesson is the one §7 records about `WORKINGS_ANALYSIS.md`, arriving in a
+> section of this document: **re-probe before implementing.** Four of six items
+> here would have been re-implementations of working code.
 
 The UI is complete and the backends are stubs. Everything below is now
 *unblocked* — §2 shows the stdlib gaps closed.
@@ -605,6 +797,51 @@ The UI is complete and the backends are stubs. Everything below is now
 
 ### Phase 6 — The T3ISA half *(~10–15 d, least certain)*
 
+> **THE MEASUREMENT THIS SECTION ASKS FOR IS DONE, 30 August 2026, AND IT
+> SPLITS THE FORK IN TWO.** This section says "Measure first: compile the
+> merged IDE with `--target t3` and read the reported image size." Doing that
+> did not reach the image size: the build failed in the CODE GENERATOR.
+>
+> ```
+> [T3ISA] `draw_sidebar` takes 12 parameters, but the T3 calling convention
+> passes arguments only in R1-R8 and has no stack argument area.
+> ```
+>
+> That is Phase 1's `context_save`/`context_switch` finding again — LLVM has no
+> argument limit, so these signatures compiled and ran hosted for months while
+> the two backends disagreed about whether the module was legal. **The
+> population was measured, not guessed: FIVE functions in the whole repository
+> exceed eight parameters, all five studioMani draw functions** (`draw_email`
+> 13, `draw_sidebar` 12, `draw_browser` 12, `draw_explorer` 11, `draw_pane`
+> 10). `src/`, `userspace/` and `thatteos.mt` are clean. All five now take
+> parameter-group structs — `View`, `CtxMenu`, `NavState`, `Compose`,
+> `PaneRect` — which are groupings the drawing code already passed around
+> together, not arbitrary bundles to get under a limit.
+>
+> **With that fixed, the numbers are:**
+>
+> | target | `--target t3` |
+> |---|---|
+> | studioMani IDE (13 modules merged) | **75,160 words against a 60,000 ceiling — 25 % over** |
+> | browser (290 lines) | reaches the assembler; `Undefined label: gui_set_color` |
+> | email (370 lines) | reaches the assembler; `Undefined label: gui_set_color` |
+> | filemanager (411 lines) | reaches the assembler; `Undefined label: gui_set_color` |
+>
+> **So the fork below is wrong as posed, and the recommendation with it.** (a)
+> is not "expensive but sufficient": the three standalone apps are blocked
+> ONLY by the missing `gui_*` syscalls and (a) would finish them, but **the IDE
+> is 25 % over the image ceiling before any syscall work exists**, and that is
+> a different limit. Implementing forty syscalls would leave a program that
+> still cannot be loaded.
+>
+> The IDE therefore needs (a) **and** one of: the memory-map change
+> (maniTC report.txt P77 — measured and DECLINED, because a bump allocator with
+> no free exhausts any bound and moving the map postpones rather than removes
+> the limit), or splitting the IDE so that no single translation unit carries
+> all thirteen modules. **The cheap, real win available today is (a) for the
+> three standalone apps**, which is a much smaller claim than "thatteOS runs on
+> T3ISA" and is one that would actually be true.
+
 §3.4 is a fork, and it should be decided explicitly rather than by drift:
 
 * **(a) Implement `gui_*` as T3 syscalls.** ~40 builtins, each needing an
@@ -623,6 +860,21 @@ written. **Measure first: compile the merged IDE with `--target t3` after 0.1 is
 in and read the reported image size.**
 
 ### Phase 7 — Bare metal *(Target B/C, not scheduled)*
+
+> **NOT DONE, and not attempted — 30 August 2026.** This is the one phase whose
+> own text says it "is a multi-month project and it should not start until
+> Phases 1–3 have made the hosted OS one program that actually schedules,
+> allocates and reads files". Phases 1, 2 and 3 are now done, so the
+> precondition is met and the reason it is still not started is the work
+> itself: Target B needs an **`x86-64-bare` codegen target in maniTC** — a
+> third backend beside LLVM and T3ISA — plus a bootloader, APIC init,
+> context-switch stubs and a physical memory manager. None of that is
+> thatteOS source; nearly all of it is compiler work.
+>
+> One thing Phase 6's measurement contributes to it: the T3 image ceiling and
+> the 2,536-word heap are properties of the **emulator's memory map**, not of
+> a bare-metal target, so the size limits that bind Phase 6 do not
+> automatically bind Phase 7.
 
 `baremetal/ANALYSIS.txt` sets out Targets A, B and C and its gap analysis is
 sound. Target B (QEMU) needs an `x86-64-bare` codegen target in maniTC, a

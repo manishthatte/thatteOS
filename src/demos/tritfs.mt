@@ -55,18 +55,46 @@ fn tritfs_demo() {
     fd_table = sys_open(fd_table, 7, 0, "/tmp/test.mt");
     io::println("");
 
-    // --- Write to file ---
-    io::println("--- Write to /tmp/test.mt ---");
-    let w = sys_write(3, 8192, 100);
+    // --- Write to file, and read it back (§3) ---
+    // The file created above is inode 6, at permission rwx, so a write is
+    // allowed and the bytes land in the inode rather than in a sentence.
+    io::println("--- Write to /tmp/test.mt, then read it back ---");
+    let w = sys_write_data(fs, fd_table, 3, "trit data");
     io::print("  bytes written: ");
     io::println_int(w);
+    expect_int("tritfs: the write reports its byte count", w, 9);
+
+    let r = sys_read_data(fs, fd_table, 3);
+    io::print("  read back: ");
+    io::println(r);
+    expect_bool("tritfs: a file round-trips through the filesystem",
+                r == "trit data", true);
+    expect_int("tritfs: and the inode records the size", fs_inode_at(fs, 7).size, 9);
     io::println("");
 
-    // --- Read from file ---
-    io::println("--- Read from /tmp/test.mt ---");
-    let r = sys_read(3, 16384, 50);
-    io::print("  bytes read: ");
-    io::println_int(r);
+    // --- REAL STORAGE (§3), hosted only -----------------------------------
+    // Everything above this point is an in-memory filesystem: the write really
+    // moved bytes, but into a struct field. This block puts them on the host's
+    // disk and reads them back through a CLEARED inode, so the content can
+    // only have come from the file.
+    io::println("--- Persistence: flush to disk, clear, reload ---");
+    store_init();
+    expect_bool("store: flushing a live inode succeeds", store_flush(fs, 7), true);
+
+    // Clear the inode. If the reload below is a no-op, the assertion after it
+    // sees "" and fails -- which is what makes this a test of the DISK rather
+    // than of the struct that is still holding the value.
+    let _ = fs_set_content(fs, 7, "");
+    expect_int("store: the inode was cleared before reloading", fs_inode_at(fs, 7).size, 0);
+
+    expect_bool("store: reloading from disk succeeds", store_load(fs, 7), true);
+    expect_bool("store: the bytes came back from the host filesystem",
+                fs_inode_at(fs, 7).content == "trit data", true);
+    expect_int("store: and the size was restored with them", fs_inode_at(fs, 7).size, 9);
+
+    // An inode that was never flushed has nothing to load.
+    expect_bool("store: loading an inode with no file reports failure",
+                store_load(fs, 5), false);
     io::println("");
 
     // --- Stat ---
