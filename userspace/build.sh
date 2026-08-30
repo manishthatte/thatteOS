@@ -28,7 +28,28 @@
 set -e
 cd "$(dirname "$0")/.."
 
-MANITC="${MANITC:-../manitc/target/release/manitc}"
+# Both spellings, for the reason ../build.sh gives: `git clone` produces maniTC,
+# older checkouts use manitc, and Linux filenames are case-sensitive, so
+# hardcoding one spelling breaks the other. The sibling has tried both since
+# 23 August and this script hardcoded the lowercase one, so on a capitalised
+# checkout the two halves of one build disagreed about which compiler exists —
+# and the half that goes wrong is the half nobody watches (P42 again). Two
+# scripts resolving the same binary are a registry that must agree with another
+# registry, and those get checked rather than described (P60).
+if [ -z "$MANITC" ]; then
+    for d in ../maniTC ../manitc; do
+        if [ -x "$d/target/release/manitc" ]; then
+            MANITC="$d/target/release/manitc"
+            break
+        fi
+    done
+fi
+if [ -z "$MANITC" ] || [ ! -x "$MANITC" ]; then
+    echo "error: the manitc binary was not found in ../maniTC or ../manitc" >&2
+    echo "build it first:  git clone https://github.com/manishthatte/maniTC && cd maniTC && cargo build --release" >&2
+    echo "or point at it:  MANITC=/path/to/manitc bash userspace/build.sh" >&2
+    exit 1
+fi
 USRDIR=userspace
 BINDIR=userspace/bin
 
