@@ -766,12 +766,27 @@ delete the literals. Add pipes once `ipc/pipe.mt` is wired.
 >   HERE**: it is C-runtime work inside maniTC, whose tree is currently shared
 >   with another session, and landing it would move the compiler this
 >   repository's build is pinned against in the middle of a campaign.
-> * **5.6 Split `main.mt` — NOT DONE, and the reason is this section's own
->   sequencing rule.** It says "do it after 5.1–5.4, not before — splitting a
->   file and changing its behaviour in one step makes both unreviewable."
->   5.2's redo half changed behaviour in `main.mt` today. The split is a
->   mechanical refactor with no behaviour change and it should be its own step,
->   against a tree where the last behavioural change is already verified.
+> * **5.6 Split `main.mt` — DONE, 30 August 2026, and it was not merely
+>   tidying: it removed Phase 6's blocker.** 1,028 lines and two functions
+>   became eleven files; `main.mt` is 53 lines. Five of the six state structs
+>   were ALREADY IN THE TREE and nothing had ever used them — `EditorState`,
+>   `ExplorerState`, `BrowserState`, `EmailState`, `TerminalState`, each with a
+>   constructor, each dead — and `editor.mt`'s own TODO said the refactor was
+>   blocked on "struct update syntax (#8)", which exists and was never needed
+>   anyway, because **a struct parameter is a mutable reference**. Another
+>   "still blocked" that was a claim with a date on it (§7's own lesson).
+>
+>   **VERIFIED AS PURE CODE MOTION, not asserted**: the pre-split `main()`
+>   body, renamed by the same map, normalised for whitespace and comments, is
+>   **710 statements — identical, in order, to the concatenation of the six
+>   extracted bodies**. What that check cannot see is the one thing that could
+>   have changed behaviour, so it was handled deliberately: `cur_file` is
+>   snapshotted once per frame BEFORE the event is read, and is passed as a
+>   `str` rather than derived inside the handlers, which would re-evaluate it
+>   after a handler had already moved `active_ed_tab`.
+>
+>   **AND IT CUT THE T3 IMAGE BY 39 %.** See §6 — this is why the section
+>   below is rewritten rather than annotated.
 >
 > The lesson is the one §7 records about `WORKINGS_ANALYSIS.md`, arriving in a
 > section of this document: **re-probe before implementing.** Four of six items
@@ -790,10 +805,11 @@ The UI is complete and the backends are stubs. Everything below is now
 * **5.5 Email.** The one genuine stdlib gap: `net_imap_connect`, `net_imap_list`,
   `net_imap_fetch`, `net_smtp_send`. They are C-runtime work against libcurl,
   which is already linked. *(~3 d, in maniTC)*
-* **5.6 Split `main.mt`.** 974 lines, with every tab's mouse and keyboard logic
-  inlined in one `main()`. The split in `WORKINGS_ANALYSIS.md` §2.1 is a good
-  one. **Do it after 5.1–5.4, not before** — splitting a file and changing its
-  behaviour in one step makes both unreviewable.
+* **5.6 Split `main.mt`. DONE 30 August 2026** — see the box above. Note the
+  split actually taken is by EVENT TYPE, not by tab as `WORKINGS_ANALYSIS.md`
+  §2.1 proposed: the loop dispatches on the SDL event first and on the tab
+  second, so a per-tab split cuts across all five arms, and a per-event split
+  is code motion. **Re-probe a plan against the code before implementing it.**
 
 ### Phase 6 — The T3ISA half *(~10–15 d, least certain)*
 
@@ -818,29 +834,40 @@ The UI is complete and the backends are stubs. Everything below is now
 > `PaneRect` — which are groupings the drawing code already passed around
 > together, not arbitrary bundles to get under a limit.
 >
-> **With that fixed, the numbers are:**
+> **With that fixed, the numbers were:**
 >
 > | target | `--target t3` |
 > |---|---|
-> | studioMani IDE (13 modules merged) | **75,160 words against a 60,000 ceiling — 25 % over** |
+> | studioMani IDE (13 modules merged) | **75,837 words against a 60,000 ceiling — 26 % over** |
 > | browser (290 lines) | reaches the assembler; `Undefined label: gui_set_color` |
 > | email (370 lines) | reaches the assembler; `Undefined label: gui_set_color` |
 > | filemanager (411 lines) | reaches the assembler; `Undefined label: gui_set_color` |
 >
-> **So the fork below is wrong as posed, and the recommendation with it.** (a)
-> is not "expensive but sufficient": the three standalone apps are blocked
-> ONLY by the missing `gui_*` syscalls and (a) would finish them, but **the IDE
-> is 25 % over the image ceiling before any syscall work exists**, and that is
-> a different limit. Implementing forty syscalls would leave a program that
-> still cannot be loaded.
+> **AND THAT CEILING PROBLEM IS NOW GONE — §5.6's REFACTOR REMOVED IT, WHICH
+> NOBODY EXPECTED OF A REFACTOR.** Splitting `main()` (30 August 2026) took the
+> merged IDE from **71,599 instructions to 43,510, −39.2 %**, and the assembler
+> no longer raises the size error at all: it now stops at
+> `Undefined label: gui_set_color`, exactly like the other three. **That is a
+> measurement and not an inference** — the size check runs in the assembler's
+> Pass 1 and label resolution in Pass 2 (`assembler.rs:186`), so a program that
+> reaches a label error has already passed the size bound.
 >
-> The IDE therefore needs (a) **and** one of: the memory-map change
-> (maniTC report.txt P77 — measured and DECLINED, because a bump allocator with
-> no free exhausts any bound and moving the map postpones rather than removes
-> the limit), or splitting the IDE so that no single translation unit carries
-> all thirteen modules. **The cheap, real win available today is (a) for the
-> three standalone apps**, which is a much smaller claim than "thatteOS runs on
-> T3ISA" and is one that would actually be true.
+> **THE SAVING IS ENTIRELY FRAME ADDRESSING, and the opcode histogram says so
+> with no room for interpretation:** four opcodes move and the rest do not —
+> `TLIT` −10,833, `TADD` −8,773, `STORE` −5,277, `LOAD` −3,457, summing to the
+> −28,089 total. The old `main()` held **62 mutable locals live across 900
+> lines** and got a **1,409-word frame**, so every read and write of any state
+> variable cost `TLIT offset; TADD addr; LOAD/STORE`. Each handler now holds
+> one pointer. *A god-function is not only unreadable on this target, it is
+> expensive — and the cost is invisible on LLVM, which is where the IDE is
+> developed.*
+>
+> **SO THE FORK IS NOW WHAT IT ORIGINALLY LOOKED LIKE, and (a) IS SUFFICIENT.**
+> All four programs are blocked by exactly one thing: the `gui_*` surface has
+> no T3ISA syscalls. The memory-map change (maniTC report.txt P77, measured and
+> DECLINED) is NOT needed, and neither is splitting the IDE across translation
+> units. **The remaining claim to earn is "thatteOS runs on T3ISA", and the
+> only work between here and it is (a).**
 
 §3.4 is a fork, and it should be decided explicitly rather than by drift:
 
@@ -851,7 +878,15 @@ The UI is complete and the backends are stubs. Everything below is now
   scripts. Cheap, honest, and it concedes that the flagship application is a
   Linux program.
 
-**Recommendation: (a), but not yet** — after Phase 1, because a kernel that is
+**Recommendation, REVISED 30 August 2026: (a), and the "not yet" has expired.**
+Phase 1 is done and Phase 5.6 removed the image-ceiling objection, so both
+preconditions this recommendation named are met. The original text is kept
+below because it is the record, and because its reasoning about the heap still
+stands — the ceiling that bit was the IMAGE, and the 2,536-word heap has not
+moved.
+
+**Recommendation (original): (a), but not yet** — after Phase 1, because a
+kernel that is
 one program is the thing worth running on T3ISA, and after the memory-map work,
 because report.txt P38/P63/P76 record the T3 image ceiling at 60,000 words with
 a 2,536-word heap and a stack that grows down into the code. A 3,355-line IDE is

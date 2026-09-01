@@ -14,7 +14,6 @@ fn draw_explorer(cwd_l: str, cwd_r: str, sel_l: int, sel_r: int,
     let tool_h = 34;
     let list_top = v.top_y + ph + 2;
     let list_bot = v.bot_y - tool_h;
-    let visible  = (list_bot - list_top) / row_h;
 
     // Pane header bar
     c_tabbar();
@@ -59,7 +58,6 @@ fn draw_explorer(cwd_l: str, cwd_r: str, sel_l: int, sel_r: int,
             gui_draw_text(str_concat("▸ ", name), L_MARGIN() + 8, ry + (row_h - fh) / 2);
         } else {
             ft_ext_color(name);
-            let size_s = "";   // fs_file_size available but keep row clean
             gui_draw_text(str_concat("  ", name), L_MARGIN() + 8, ry + (row_h - fh) / 2);
         }
         c_border();

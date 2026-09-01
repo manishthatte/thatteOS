@@ -151,27 +151,45 @@ struct ProcTable {
 
 // NINE NAMED FIELDS AND NOT `slots: [PCB]`, AND THAT IS A MEASUREMENT.
 //
-// The array version was written first, and it works everywhere except in the
-// kernel. Hosted was correct throughout; on T3 the table came back with
-// `count` one short and every pid garbage --
+// The array version was written first and corrupted on T3 while hosted stayed
+// correct: `count` one short, every pid garbage --
 //     admitted: 1 processes, 9 of them live
 //     DBG count=1 pid0=6979952655 pid1=429043474
-// -- and the boot then trapped storing through one of those values:
-//     TRAP: stack overflow — store to 17 is inside the program image
+// -- and the boot then trapped storing through one of those values.
 //
-// What it is NOT, each ruled out by measurement rather than by argument:
-//   * not heap exhaustion -- twelve fresh PCBs allocate successfully at the
-//     exact point of failure;
-//   * not the shared free slot -- the same corruption occurs with nine
-//     distinct ones;
-//   * not the mutating call -- inlining `t.slots[i].age = ...` traps too;
-//   * not the pattern in isolation -- a standalone program with this struct,
-//     this PCB, this CapWord, nine slots, the same admit loop and the same
-//     `s[idx] = p` store agrees byte for byte on both backends.
-// It needs the whole 37,000-word kernel to reproduce, which is why no smaller
-// repro exists to hand to maniTC yet.
+// CORRECTION, 30 August 2026. This block used to end "it needs the whole
+// 37,000-word kernel to reproduce, which is why no smaller repro exists to
+// hand to maniTC". BOTH HALVES WERE WRONG. It reproduces in EIGHT LINES and
+// 76 words, it is not about this struct or this kernel, and it is now maniTC
+// report.txt **P94**:
 //
-// So this follows the shape THIS KERNEL ALREADY PROVES: `SleepQueue` in
+//     fn mkarr() -> [int] { let a: [int] = [-1,-2,-3]; return a; }
+//     fn show(a: [int]) { /* print a[0..2] */ }
+//     fn main() { show(mkarr()); }        // T3 prints junk; LLVM is correct
+//
+// THE MECHANISM. The T3 backend puts every array alloca in the CALLER'S FRAME
+// and does no escape analysis -- `regalloc::is_heap_alloca` answers `true`
+// only for a struct -- so an array that is returned, bare or inside a struct,
+// is a pointer to a frame that has been popped. The next CALL writes over it.
+// LLVM `malloc`s the same array, so the backends disagree about an array's
+// storage class. That a STRUCT survives the same journey is exactly why this
+// hid: the shape that breaks is the shape a struct makes safe.
+//
+// The corrupt elements are the LAST k, where k is the next callee's frame
+// size -- measured over array lengths 3,5,6,7,8,9,12, and at length 6 the
+// standalone program reproduces `6979952655`, the value printed above.
+//
+// WHY THIS SHAPE ANYWAY, now that the cause is known. `slots: [PCB; 9]` --
+// with the length in the type -- makes the caller copy the elements into its
+// own live frame and IS correct here on both backends, verified. It then
+// costs +53 heap words against a 55-word margin and the kernel trades a
+// correct boot for `TRAP: heap exhausted` (max-heap 2,534 of 2,536, against
+// 2,481 as shipped). So the named fields are kept for a SECOND, independent
+// reason -- the T3 heap, report.txt P63 -- and not only for the defect.
+// Note also that a sized array is the defect stepped around at each use, not
+// repaired: `proc_table_init`'s own assembly is byte-identical either way.
+//
+// It follows the shape THIS KERNEL ALREADY PROVES: `SleepQueue` in
 // kernel/timer.mt is also a nine-slot table, is also written as nine named
 // fields rather than an array, and has been correct on both backends for
 // months. The cost is that slots cannot be indexed, so `slot_at` below is an

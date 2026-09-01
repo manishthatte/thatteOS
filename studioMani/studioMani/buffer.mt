@@ -292,7 +292,6 @@ fn buf_delete_selection(b: str, sel_start: int, sel_end: int) -> str {
 fn buf_replace_all(b: str, from: str, to: str) -> str {
     let text = buf_text(b);
     let flen = str_len(from);
-    let tlen = str_len(to);
     let slen = str_len(text);
     if flen == 0 { return b; }
     let mut out = "";

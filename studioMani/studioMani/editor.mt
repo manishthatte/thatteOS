@@ -302,13 +302,27 @@ fn draw_editor(buf: str, ed_scroll: int,
 }
 
 // ── EditorState ───────────────────────────────────────────────────────────────
-// All mutable state owned by the Editor tab.
-// TODO: when struct update syntax (#8) is added, main.mt event loop can be
-// refactored to pass/return EditorState and move handler logic into this file.
+// All mutable state owned by the Editor tab, and the sidebar beside it.
+//
+// THE TODO THAT USED TO SIT HERE SAID THE REFACTOR WAS BLOCKED, AND IT WAS
+// NOT. It read: "when struct update syntax (#8) is added, main.mt event loop
+// can be refactored to pass/return EditorState and move handler logic into
+// this file." Struct update syntax exists (`T { ..p, f: v }`) -- and the
+// refactor never needed it, because a struct PARAMETER is a mutable reference
+// in this language: a handler taking `EditorState` writes straight through to
+// the caller's copy, with nothing to return and nothing to update. The event
+// loop was split on 30 August 2026 (ENHANCEMENT_PLAN §5.6) and this struct is
+// what it passes. Another "still blocked" that was a claim with a date on it.
+//
+// `buf` WAS DECLARED `Buffer`, A TYPE THIS REPOSITORY HAS NEVER DEFINED, and
+// `manitc check` accepted it -- an undeclared type name resolves to `Unknown`,
+// which is compatible with everything, so the field silently held the `str`
+// that `buf_empty()` returns. maniTC report.txt P95. It is `str` now, which is
+// what a gap buffer is here: text, a separator, more text.
 struct EditorState {
     pub open_files:    str,
     pub active_ed_tab: int,
-    pub buf:           Buffer,
+    pub buf:           str,
     pub ed_scroll:     int,
     pub dirty:         int,
     pub sel_anchor:    int,
@@ -318,6 +332,7 @@ struct EditorState {
     pub replace_q:     str,
     pub find_result:   int,
     pub undo_stack:    str,
+    pub redo_stack:    str,   // added with Ctrl+Y, §5.2
     pub sidebar_vis:   int,
     pub cwd:           str,
     pub ft_sel:        int,
@@ -335,7 +350,7 @@ fn editor_state_init(cwd: str) -> EditorState {
         dirty: 0, sel_anchor: -1,
         find_vis: 0, find_focus: 0,
         find_q: "", replace_q: "", find_result: -1,
-        undo_stack: "", sidebar_vis: 1,
+        undo_stack: "", redo_stack: "", sidebar_vis: 1,
         cwd: cwd, ft_sel: 0, ft_scroll: 0,
         git_out: "", ctx_row: -1, ctx_x: 0, ctx_y: 0,
     };

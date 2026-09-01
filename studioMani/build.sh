@@ -87,6 +87,14 @@ cat studioMani/theme.mt \
     studioMani/email.mt \
     studioMani/terminal.mt \
     studioMani/palette.mt \
+    studioMani/state.mt \
+    studioMani/titlebar.mt \
+    studioMani/frame.mt \
+    studioMani/events_quit.mt \
+    studioMani/events_key.mt \
+    studioMani/events_text.mt \
+    studioMani/events_mouse.mt \
+    studioMani/events_wheel.mt \
     studioMani/main.mt > "$MERGED"
 
 build_hosted() {

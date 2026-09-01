@@ -103,7 +103,6 @@ fn confirm(msg: str, detail: str) -> int {
     let wh = gui_window_height();
     let dw = 500; let dh = 140;
     let dx = (ww - dw) / 2; let dy = (wh - dh) / 2;
-    let fh = gui_font_height();
     let mut result = -1;
     while result == -1 {
         gui_set_color(0, 0, 0, 160);

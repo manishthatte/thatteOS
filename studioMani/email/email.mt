@@ -87,13 +87,13 @@ fn main() {
 
     let mut active_folder = 0;
     let mut sel_mail      = 0;
-    let mut mail_scroll   = 0;
+    let mail_scroll       = 0;   // never scrolled: no IMAP backend yet
     let mut view_mode     = 0;   // 0=list  1=read  2=compose
     let mut compose_to    = "";
     let mut compose_sub   = "";
     let mut compose_body  = "";
     let mut compose_field = 0;
-    let mut status_msg    = "studioMani email — IMAP client";
+    let status_msg        = "studioMani email — IMAP client";  // never updated: no IMAP backend yet
     let mut running       = 1;
 
     while running == 1 {
@@ -102,7 +102,6 @@ fn main() {
         let mx  = gui_mouse_x();
         let my  = gui_mouse_y();
         let fh  = gui_font_height();
-        let mw  = ww - FOLDER_W();
 
         // ── Draw ──────────────────────────────────────────────────────────────
         c_bg();

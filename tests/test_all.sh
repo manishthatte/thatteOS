@@ -591,6 +591,87 @@ else
 fi
 
 echo ""
+echo "── studioMani ───────────────────────────────────────────────────────────────"
+
+# UNTIL TODAY THIS SUITE DID NOT MENTION studioMani AT ALL. 3,472 lines of IDE
+# and three standalone apps, built by studioMani/build.sh, checked by nothing —
+# the same hole Phase 1 found in src/ and for the same reason: a build script
+# that exits 0 is not a test. The rows below are deliberately modest about what
+# they prove, because an SDL2 program cannot be driven headlessly here.
+#
+# WHAT A SMOKE ROW ACTUALLY PROVES, said plainly rather than implied by a green
+# tick: the program links, SDL2 initialises, and the FIRST FRAME of the draw
+# path runs to gui_present() without crashing — which for the IDE is the
+# titlebar, the tab bar, the sidebar, the editor tab bar, the breadcrumb, the
+# editor and the status bar. It proves NOTHING about the event handlers, which
+# are the 700 lines that matter most. Driving those needs injected SDL events
+# and is its own step.
+#
+# SDL_VIDEODRIVER=dummy is what makes it runnable with no display. rc 124 —
+# killed by the timeout — is the PASS condition, because the program is an
+# event loop and is supposed to still be running. An exit of 0 would mean it
+# quit on its own, which it must not do; any other code is a crash.
+SM_OUT=./studioMani/output
+for prog in studioMani sm_browser sm_email sm_fm; do
+    if [ ! -x "$SM_OUT/$prog" ]; then
+        # A MISSING BINARY IS A FAIL AND NOT A SKIP. See trap 4 in CLAUDE.md:
+        # a guard that skips a test when its input is missing is what once made
+        # 27 of 61 checks read as ALL TESTS PASSED.
+        echo "  FAIL  studioMani: $prog runs headless"
+        echo "        $SM_OUT/$prog does not exist — run: bash studioMani/build.sh"
+        FAIL=$((FAIL + 1))
+        continue
+    fi
+    set +e
+    SDL_VIDEODRIVER=dummy timeout 5 "$SM_OUT/$prog" >/dev/null 2>&1
+    rc=$?
+    set -e
+    if [ "$rc" -eq 124 ]; then
+        echo "  PASS  studioMani: $prog runs headless"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL  studioMani: $prog runs headless"
+        echo "        exited $rc; expected 124 (still running when the timeout fired)"
+        FAIL=$((FAIL + 1))
+    fi
+done
+
+# The IDE is thirteen modules concatenated in dependency order, so the merged
+# file is the only thing a compiler ever sees. Check IT, not the parts.
+SM_MERGED="$SM_OUT/studioMani_merged.mt"
+if [ -x "$MANITC_BIN" ] && [ -f "$SM_MERGED" ]; then
+    SSA=$("$MANITC_BIN" check --verify-ssa "$SM_MERGED" 2>&1 || true)
+    if ! printf '%s' "$SSA" | grep -q "violation"; then
+        echo "  PASS  studioMani: merged IDE has no SSA violations"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL  studioMani: merged IDE has no SSA violations"
+        printf '%s\n' "$SSA" | grep "violation" | head -3
+        FAIL=$((FAIL + 1))
+    fi
+
+    # ZERO WARNINGS, which the kernel has held since Phase 1 and studioMani did
+    # not until 30 August 2026. It had thirteen, all "unused variable" — and
+    # two of them were naming REAL DEFECTS, not untidiness: a Tab indent and a
+    # Replace All that pushed no undo snapshot, so neither was undoable. The
+    # warning was the only thing in the repository that pointed at them.
+    WARN=$("$MANITC_BIN" check "$SM_MERGED" 2>&1 | grep -c "^warning:" || true)
+    if [ "$WARN" -eq 0 ]; then
+        echo "  PASS  studioMani: merged IDE compiles with no warnings"
+        PASS=$((PASS + 1))
+    else
+        echo "  FAIL  studioMani: merged IDE compiles with no warnings"
+        echo "        $WARN warning(s)"
+        FAIL=$((FAIL + 1))
+    fi
+else
+    echo "  FAIL  studioMani: merged IDE has no SSA violations"
+    echo "  FAIL  studioMani: merged IDE compiles with no warnings"
+    echo "        compiler at $MANITC_BIN or $SM_MERGED missing"
+    FAIL=$((FAIL + 2))
+fi
+
+echo ""
 
 # ── summary ──────────────────────────────────────────────────────────────────
 
@@ -602,7 +683,7 @@ echo "=== results: $PASS/$TOTAL passed ==="
 # the count. This constant is a second source of truth and it is deliberate:
 # it is the only thing that can notice a check disappearing. Update it in the
 # same commit that adds or removes one; the message says so.
-EXPECTED_CHECKS=102
+EXPECTED_CHECKS=108
 if [ "$TOTAL" -ne "$EXPECTED_CHECKS" ]; then
     echo "    SUITE INCOMPLETE: ran $TOTAL checks, expected $EXPECTED_CHECKS"
     echo "    a check disappeared, or one was added without updating"

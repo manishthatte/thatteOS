@@ -224,7 +224,6 @@ fn main() {
     let mut history = ""; let mut focused = 1; let mut running = 1;
 
     while running == 1 {
-        let ww  = gui_window_width();
         let wh  = gui_window_height();
         let mx  = gui_mouse_x();
         let my  = gui_mouse_y();

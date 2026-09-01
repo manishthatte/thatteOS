@@ -26,7 +26,6 @@ fn draw_git_badge(ch: str, bx: int, by: int) {
     elif ch == "D" { c_git_d(); }
     elif ch == "?" { c_git_u(); }
     else { return; }
-    let fh = gui_font_height();
     gui_draw_text(ch, bx, by);
 }
 

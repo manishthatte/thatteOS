@@ -47,6 +47,16 @@ main.mt (974L, GOD), buffer.mt, editor.mt, layout.mt, highlight.mt, explorer.mt,
 
 ### 2.1 `studioMani/studioMani/main.mt` — 974 lines ⚠️ GOD FILE
 
+> **DONE 30 August 2026, and the split below is NOT the one that was taken.**
+> `main.mt` is 53 lines. The plan here splits by TAB (`events_editor.mt`,
+> `events_browser.mt`, …); the loop actually dispatches on the SDL **event
+> type** first and on the tab second, so a per-tab split cuts across all five
+> arms and rewrites them, while a per-event split is pure code motion. The
+> files are `frame.mt` and `events_{quit,key,text,mouse,wheel}.mt`, plus
+> `titlebar.mt` and `state.mt`. **Re-probe a plan against the code before
+> implementing it** — this document's own standing warning, earned again.
+
+
 **What it does:** Title bar, tab bar, ENTIRE event loop for all 5 tabs (Editor, Explorer, Browser, Email, Terminal), mouse hit detection, keyboard dispatch for every tab. Every tab's mouse/keyboard logic is inlined in one 900-line `main()` function.
 
 **Split plan:**
@@ -94,12 +104,28 @@ Because ManiT does not have mutable array fields in structs (or indexing into st
 - Every "update one slot" operation rebuilds the entire struct with all 9 fields
 - Massive boilerplate: `return SleepQueue { count: new_count, s0: entry, s1: queue.s1, s2: queue.s2, ... }` — this appears in timer.mt, klog.mt, tritfs.mt, messages.mt
 
-**Root cause:** ManiT compiler lacks:
+**Root cause (AS WRITTEN 2 Aug 2026 — BOTH CLAIMS ARE FALSE, measured
+30 Aug 2026):** ManiT compiler lacks:
 
-1. Mutable struct field arrays (e.g., `pub slots: [T; 9]`)
-2. Struct field spread/update syntax (e.g., `SomeStruct { ..old, field: new }`)
+1. ~~Mutable struct field arrays (e.g., `pub slots: [T; 9]`)~~
+2. ~~Struct field spread/update syntax (e.g., `SomeStruct { ..old, field: new }`)~~
 
-Both of these are compiler/language features, not OS design issues. Fixing them in manitc would eliminate ~30% of the boilerplate across the entire OS.
+> **CORRECTION, 30 August 2026.** Both exist and both were probed directly.
+> `pub slots: [PCB; 9]` compiles and reads back correctly on **both** backends,
+> and `T { ..p, f: v }` copies (ENHANCEMENT_PLAN's status table records the
+> same two as DONE). So the "9 inline fields" pattern is not forced by a
+> missing feature.
+>
+> **But do not conclude the pattern should be replaced, because the real
+> reasons are worse and neither is in this document.** (1) An UNSIZED `[T]`
+> field is a live maniTC defect — the array is frame-allocated with no escape
+> analysis, so a struct holding one, returned from a function, carries a
+> pointer to a dead stack frame and corrupts silently on T3 (report.txt
+> **P94**; `src/kernel/process.mt` is the instance). (2) The SIZED form is
+> correct and costs a copy per assignment: converting `ProcTable` to
+> `[PCB; 9]` fixes the corruption and then **exhausts the 2,536-word T3 heap**,
+> 2,534 words against a 55-word margin. The nine named fields are the right
+> shape here for two independent measured reasons, not for a missing feature.
 
 ### 3.2 Duplicated structs across files
 
