@@ -141,20 +141,29 @@ fn main() {
 
             let field_x = px + 70;
             let field_w = pw - 90;
-            let fields  = [compose_to, compose_sub];
+            // maniTC B7 D-3, 2 September 2026: an array literal now CONSUMES a
+            // plain variable element, like a tuple or struct literal always
+            // has. `[compose_to, compose_sub]` built a container of two
+            // aliases inside the redraw loop, and `compose_to` is mutated
+            // later in the same loop (key handling, below) — so the table was
+            // correct only because nothing read it after the mutation.
+            // Selecting the field directly removes the container rather than
+            // working around the rule. `labels` is untouched: its elements are
+            // string LITERALS, and D-3 bites only on a plain variable.
             let labels  = ["To:", "Subject:"];
             let mut fi  = 0;
             while fi < 2 {
                 let fy  = py + 38 + fi * 30;
+                let cur = if fi == 0 { compose_to } else { compose_sub };
                 c_dim();
                 gui_draw_text(labels[fi], px + MARGIN(), fy + (22 - fh) / 2);
                 if compose_field == fi { c_accent(); } else { c_border(); }
                 gui_fill_rect(field_x, fy, field_w, 22);
                 gui_draw_rect(field_x, fy, field_w, 22);
                 c_white();
-                gui_draw_text(fields[fi], field_x + 4, fy + (22 - fh) / 2);
+                gui_draw_text(cur, field_x + 4, fy + (22 - fh) / 2);
                 if compose_field == fi {
-                    let cw = gui_text_width(fields[fi]);
+                    let cw = gui_text_width(cur);
                     c_accent();
                     gui_draw_line(field_x + 4 + cw, fy + 2, field_x + 4 + cw, fy + 20);
                 }
