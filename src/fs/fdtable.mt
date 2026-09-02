@@ -243,7 +243,7 @@ fn sys_write_data(fs: TritFS, fd_table: FdTable, fd_num: int, data: str) -> int 
         return -1;
     }
     let desc = fd_table_get(fd_table, fd_num);
-    if !desc.valid {
+    if !desc.open {
         io::println("  ERROR: fd is not open — EBADF");
         return -1;
     }
@@ -268,7 +268,7 @@ fn sys_read_data(fs: TritFS, fd_table: FdTable, fd_num: int) -> str {
         return "";
     }
     let desc = fd_table_get(fd_table, fd_num);
-    if !desc.valid {
+    if !desc.open {
         io::println("  ERROR: fd is not open — EBADF");
         return "";
     }

@@ -159,7 +159,7 @@ fn launch_init(sr: StatusReg) -> StatusReg {
 // reached EACH OTHER: the timer printed "-> scheduler_run() invoked", the
 // scheduler built its own table and discarded it, and the syscall layer never
 // consulted a capability. This is those four modules connected.
-fn event_loop(t: ProcTable, sr: StatusRegister) {
+fn event_loop(t: ProcTable, sr: StatusReg) {
     io::println("[BOOT] event loop: interrupt -> timer -> scheduler, 3 ticks");
 
     let mut timer = timer_init();
