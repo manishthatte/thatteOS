@@ -36,6 +36,15 @@ cd "$(dirname "$0")/.."
 # and the half that goes wrong is the half nobody watches (P42 again). Two
 # scripts resolving the same binary are a registry that must agree with another
 # registry, and those get checked rather than described (P60).
+# Since 3 Sep 2026 this machine sets CARGO_TARGET_DIR globally, so a maniTC
+# built here lands in $CARGO_TARGET_DIR/release and there is no repo-local
+# target/ at all. Look there FIRST and keep the old layout as a fallback: a
+# checkout that still builds into ./target must keep working, and the two
+# cannot be told apart from here.
+if [ -z "$MANITC" ] && [ -n "${CARGO_TARGET_DIR:-}" ] \
+   && [ -x "$CARGO_TARGET_DIR/release/manitc" ]; then
+    MANITC="$CARGO_TARGET_DIR/release/manitc"
+fi
 if [ -z "$MANITC" ]; then
     for d in ../maniTC ../manitc; do
         if [ -x "$d/target/release/manitc" ]; then
@@ -45,7 +54,7 @@ if [ -z "$MANITC" ]; then
     done
 fi
 if [ -z "$MANITC" ] || [ ! -x "$MANITC" ]; then
-    echo "error: the manitc binary was not found in ../maniTC or ../manitc" >&2
+    echo "error: the manitc binary was not found in \$CARGO_TARGET_DIR/release, ../maniTC or ../manitc" >&2
     echo "build it first:  git clone https://github.com/manishthatte/maniTC && cd maniTC && cargo build --release" >&2
     echo "or point at it:  MANITC=/path/to/manitc bash userspace/build.sh" >&2
     exit 1

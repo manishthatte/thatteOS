@@ -571,7 +571,22 @@ fi
 # T3ISA is the actual target, so the kernel is checked ON it, not merely
 # compiled FOR it. Byte-for-byte against the hosted run: a kernel that builds
 # for T3 and answers differently there has not been ported, it has been forked.
-MANITC_BIN="${MANITC:-../manitc/target/release/manitc}"
+# Three scripts resolve this binary and they must agree — build.sh and
+# userspace/build.sh try $CARGO_TARGET_DIR first (global since 3 Sep 2026,
+# so there is no repo-local target/) and then both spellings of the sibling
+# checkout. This one used to try one spelling of one layout, which is how a
+# storage change made three rows here fail while both build scripts were fine.
+if [ -n "${MANITC:-}" ]; then
+    MANITC_BIN="$MANITC"
+elif [ -n "${CARGO_TARGET_DIR:-}" ] && [ -x "$CARGO_TARGET_DIR/release/manitc" ]; then
+    MANITC_BIN="$CARGO_TARGET_DIR/release/manitc"
+else
+    MANITC_BIN=""
+    for d in ../maniTC ../manitc; do
+        [ -x "$d/target/release/manitc" ] && { MANITC_BIN="$d/target/release/manitc"; break; }
+    done
+    [ -z "$MANITC_BIN" ] && MANITC_BIN=../manitc/target/release/manitc
+fi
 if [ -x "$MANITC_BIN" ]; then
     T3OUT=$(timeout 60 "$MANITC_BIN" run-t3 "$KERNEL_T3" 2>&1 | tail -n +2 || true)
     if [ "$T3OUT" = "$OUT" ]; then
